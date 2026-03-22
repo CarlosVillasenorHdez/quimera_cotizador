@@ -1,0 +1,192 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@layer base {
+  :root {
+    --background: 222 47% 11%;
+    --card: 222 47% 15%;
+    --card-elevated: 222 47% 18%;
+    --border: 222 30% 22%;
+    --primary: 24 95% 53%;
+    --primary-foreground: 0 0% 100%;
+    --muted: 222 30% 30%;
+    --muted-foreground: 222 15% 60%;
+    --text: 210 40% 95%;
+    --text-muted: 222 15% 60%;
+    --success: 142 71% 45%;
+    --danger: 0 84% 60%;
+    --warning: 38 92% 50%;
+    --info: 217 91% 60%;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: #0f172a;
+    color: #e2e8f0;
+  }
+
+  body {
+    background-color: #0f172a;
+    color: #e2e8f0;
+    min-height: 100vh;
+  }
+
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #1e293b;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+}
+
+@layer utilities {
+  .font-mono-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .text-gradient-orange {
+    background: linear-gradient(135deg, #f97316, #fb923c);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .card-base {
+    background-color: #1e293b;
+    border: 1px solid #1e3a5f;
+    border-radius: 0.75rem;
+  }
+
+  .input-base {
+    background-color: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
+    color: #e2e8f0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    width: 100%;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .input-base:focus {
+    outline: none;
+    border-color: #f97316;
+    box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.2);
+  }
+
+  .btn-primary {
+    background-color: #f97316;
+    color: white;
+    font-weight: 600;
+    padding: 0.5rem 1.25rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    transition: all 150ms ease;
+    border: none;
+    cursor: pointer;
+  }
+
+  .btn-primary:hover {
+    background-color: #ea6c10;
+    transform: translateY(-1px);
+  }
+
+  .btn-primary:active {
+    transform: scale(0.97);
+  }
+
+  .btn-ghost {
+    background-color: transparent;
+    color: #94a3b8;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    transition: all 150ms ease;
+    border: 1px solid #334155;
+    cursor: pointer;
+  }
+
+  .btn-ghost:hover {
+    background-color: #1e293b;
+    color: #e2e8f0;
+    border-color: #475569;
+  }
+
+  .section-header {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+  }
+
+  .toggle-track {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    width: 2.25rem;
+    height: 1.25rem;
+    border-radius: 9999px;
+    transition: background-color 200ms ease;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .toggle-thumb {
+    position: absolute;
+    width: 0.875rem;
+    height: 0.875rem;
+    border-radius: 9999px;
+    background: white;
+    transition: transform 200ms ease;
+    left: 0.1875rem;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 200ms ease forwards;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .row-expand {
+    animation: expandRow 200ms ease forwards;
+  }
+
+  @keyframes expandRow {
+    from { opacity: 0; max-height: 0; }
+    to { opacity: 1; max-height: 600px; }
+  }
+}
