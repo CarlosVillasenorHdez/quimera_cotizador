@@ -286,7 +286,7 @@ export const DIGITAL_MACHINE_DATA: Record<string, {
   costo_hr: number;
 }> = {
   '6MIL':    { planilla_mm: 317, frame_cm: 97,  set_up_m: 5,   click: 0.0242, costo_hr: 74.167  },
-  'V12':     { planilla_mm: 320, frame_cm: 100, set_up_m: 100, click: 0.0220, costo_hr: 194.097 },
+  'V12':     { planilla_mm: 313, frame_cm: 100, set_up_m: 100, click: 0.0220, costo_hr: 194.097 },
   '20MIL':   { planilla_mm: 714, frame_cm: 110, set_up_m: 10,  click: 0.0715, costo_hr: 74.167  },
   'INK_JET': { planilla_mm: 317, frame_cm: 400, set_up_m: 10,  click: 0,      costo_hr: 74.167  },
 };
@@ -607,7 +607,8 @@ export function calcularCostoDigital(
     // horas_impresion_reales = M4_tiempo_min / 60 (sin MAX, sin cobro_mínimo)
     const oh = GLOBAL.overhead_digital_por_hr;
     costo_gtos_grales_usd = horas_impresion_reales * (oh.gastos_grales + oh.depreciaciones + oh.gastos_sistemas);
-    costo_gtos_direccion_usd = horas_impresion_reales * oh.gtos_direccion;
+    // L63: GTOS_DIR = horas_reales * K33 (usa K33=0.091, NO N33=15.199) — fórmula exacta del Excel
+    costo_gtos_direccion_usd = horas_impresion_reales * GLOBAL.overhead_digital_por_m2.gtos_direccion;  // K33 = 0.091
   }
 
   // ── PASO 12: ENVÍOS ────────────────────────────────────────────────────────
