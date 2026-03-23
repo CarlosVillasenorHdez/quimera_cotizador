@@ -175,6 +175,8 @@ export interface GlobalParams {
   cobro_minimo: number;
   metros_cambio_bobina: number;
   meses_depreciacion: number;
+  n_maquinas_digitales: number;   // default: 14 — máquinas sobre las que se distribuye el overhead digital
+  n_maquinas_analogicas: number;  // default: 7  — máquinas sobre las que se distribuye el overhead analógico
 }
 
 export const DEFAULT_GLOBAL_PARAMS: GlobalParams = {
@@ -190,6 +192,8 @@ export const DEFAULT_GLOBAL_PARAMS: GlobalParams = {
   cobro_minimo: 60,
   metros_cambio_bobina: 20,
   meses_depreciacion: 120,
+  n_maquinas_digitales: 14,
+  n_maquinas_analogicas: 7,
 };
 
 // ─── EXTENDED MACHINE PARAMETERS (for Parameters Tab) ───────────────────────

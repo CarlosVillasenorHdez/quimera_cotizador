@@ -602,12 +602,23 @@ export function calcularCostoDigital(
     // GTOS DIRECCIÓN (row L63) = m2_netos * gtos_direccion = 6000 * 0.091 = $546 ✓
     costo_gtos_direccion_usd = m2_netos * oh.gtos_direccion;  // 0.091
   } else {
-    // FIX 3: POR_HORA usa horas_REALES (M4_tiempo_min/60), NO horas de cobro mínimo
-    // Excel L58: IF(POR_METRO, m2_netos × K32, horas_REALES × N32)
-    // horas_impresion_reales = M4_tiempo_min / 60 (sin MAX, sin cobro_mínimo)
-    const oh = GLOBAL.overhead_digital_por_hr;
-    costo_gtos_grales_usd = horas_impresion_reales * (oh.gastos_grales + oh.depreciaciones + oh.gastos_sistemas);
+    // POR_HORA: tasas calculadas dinámicamente según n_maquinas_digitales
+    // fee_hr = gasto_mensual_usd × pct_digital ÷ horas_mes ÷ n_maquinas
+    // Con n=14 (default): fee_hr_gastos = 176490×0.70÷204÷14 = 43.257 ✓
+    const n_maq_dig = params.n_maquinas_digitales ?? 14;
+    const horas_mes = (params.dias_mes ?? 20) * (params.horas_dia ?? 12) * (params.eficiencia ?? 0.85);
+    const GASTOS_DIGITALES = {
+      gastos_grales:   { mensual: 176490, pct: 0.70 },
+      depreciaciones:  { mensual:  20034, pct: 0.70 },
+      mano_obra:       { mensual:  81090, pct: 0.70 },
+      gtos_direccion:  { mensual:  62010, pct: 0.70 },
+      gastos_sistemas: { mensual:  20988, pct: 0.70 },
+    };
+    const fee_hr_gastos = GASTOS_DIGITALES.gastos_grales.mensual   * GASTOS_DIGITALES.gastos_grales.pct   / horas_mes / n_maq_dig;
+    const fee_hr_depre  = GASTOS_DIGITALES.depreciaciones.mensual  * GASTOS_DIGITALES.depreciaciones.pct  / horas_mes / n_maq_dig;
+    const fee_hr_sis    = GASTOS_DIGITALES.gastos_sistemas.mensual * GASTOS_DIGITALES.gastos_sistemas.pct / horas_mes / n_maq_dig;
     // L63: GTOS_DIR = horas_reales * K33 (usa K33=0.091, NO N33=15.199) — fórmula exacta del Excel
+    costo_gtos_grales_usd = horas_impresion_reales * (fee_hr_gastos + fee_hr_depre + fee_hr_sis);
     costo_gtos_direccion_usd = horas_impresion_reales * GLOBAL.overhead_digital_por_m2.gtos_direccion;  // K33 = 0.091
   }
 
@@ -636,8 +647,11 @@ export function calcularCostoDigital(
     if (modo === 'POR_METRO') {
       costo_mo_overhead_usd = m2_netos * GLOBAL.overhead_digital_por_m2.mano_obra;  // 0.119
     } else {
-      // FIX 3: POR_HORA MO overhead también usa horas_REALES
-      costo_mo_overhead_usd = horas_impresion_reales * GLOBAL.overhead_digital_por_hr.mano_obra;  // 19.875
+      // POR_HORA: MO overhead calculado dinámicamente según n_maquinas_digitales
+      const n_maq_dig = params.n_maquinas_digitales ?? 14;
+      const horas_mes = (params.dias_mes ?? 20) * (params.horas_dia ?? 12) * (params.eficiencia ?? 0.85);
+      const fee_hr_mo = 81090 * 0.70 / horas_mes / n_maq_dig;
+      costo_mo_overhead_usd = horas_impresion_reales * fee_hr_mo;
     }
   }
 

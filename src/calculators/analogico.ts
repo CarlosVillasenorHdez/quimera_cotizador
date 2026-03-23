@@ -610,12 +610,27 @@ export function calcularCostoAnalogico(
       costo_gtos_post = m2_cobrar * oh.gastos_venta_dep;   // 0.1236
       costo_gtos_dir  = m2_cobrar * (oh.gtos_direccion + oh.gastos_sistemas);  // 0.0522
     } else {
-      // POR_HORA: usa horas REALES (tiempo_hrs_real, sin cobro mínimo)
-      const oh = OVERHEAD_ANALOG_POR_HORA;
+      // POR_HORA: tasas calculadas dinámicamente según n_maquinas_analogicas
+      // fee_hr = gasto_mensual_usd ÷ horas_mes ÷ n_maquinas
+      // Con n=7 (default): fee_hr_fab = 52947÷204÷7 = 37.078 ✓
+      const n_maq_an = params.n_maquinas_analogicas ?? 7;
+      const horas_mes = (params.dias_mes ?? 20) * (params.horas_dia ?? 12) * (params.eficiencia ?? 0.85);
+      const GASTOS_ANALOGICOS = {
+        gastos_fuera_fab: 52947,
+        depreciaciones:    6010.2,
+        mano_obra:        24327,
+        gtos_direccion:   18603,
+        gastos_sistemas:   6296.4,
+      };
+      const fee_hr_fab = GASTOS_ANALOGICOS.gastos_fuera_fab / horas_mes / n_maq_an;
+      const fee_hr_dep = GASTOS_ANALOGICOS.depreciaciones   / horas_mes / n_maq_an;
+      const fee_hr_mo  = GASTOS_ANALOGICOS.mano_obra        / horas_mes / n_maq_an;
+      const fee_hr_dir = GASTOS_ANALOGICOS.gtos_direccion   / horas_mes / n_maq_an;
+      const fee_hr_sis = GASTOS_ANALOGICOS.gastos_sistemas  / horas_mes / n_maq_an;
       const hrs = tiempo_hrs_real;
-      costo_mo_ind    = hrs * oh.mano_obra;                                    // 17.036
-      costo_gtos_post = hrs * (oh.gastos_fuera_fab + oh.depreciaciones);       // 41.287
-      costo_gtos_dir  = hrs * (oh.gtos_direccion + oh.gastos_sistemas);        // 17.436
+      costo_mo_ind    = hrs * fee_hr_mo;
+      costo_gtos_post = hrs * (fee_hr_fab + fee_hr_dep);
+      costo_gtos_dir  = hrs * (fee_hr_dir + fee_hr_sis);
     }
   }
 
