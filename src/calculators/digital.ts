@@ -463,8 +463,11 @@ export function calcularCostoDigital(
 
   // ── PASO 4: M2 ─────────────────────────────────────────────────────────────
   const ancho_m = ANCHO_MATERIAL_M[machine.id] ?? maqData.ancho_material_m;
-  // FIX 1: m2_total usa metros_total_base (metros_imp + 20m omega) — incluye omega
-  // Excel K4 = (I4 + O40) × B15 × B17 = (metros_imp + omega_min_20m) × ancho × precio
+  // m2_para_laminado = metros_imp × ancho (J4 del Excel — SIN los 20m de omega)
+  // CORRECCIÓN 1: laminado se calcula sobre metros_imp solamente, NO metros_total
+  const m2_para_laminado = metros_imp * ancho_m;
+  // m2_total usa metros_total_base (metros_imp + 20m omega) — para sustrato y CEI
+  // CORRECCIÓN 3: sustrato sí usa metros_total (incluye los 20m de omega mínimo)
   const m2_total = metros_total_base * ancho_m;
 
   // M2_NETOS = área pura de etiqueta × cantidad (para overhead)
@@ -506,16 +509,16 @@ export function calcularCostoDigital(
   const costo_sustrato_usd = m2_total * job.sustrato_precio_usd_m2;
 
   // ── PASO 7: ACABADOS (laminado, barniz, etc.) ──────────────────────────────
-  // CRÍTICO: laminado se divide entre eficiencia (fórmula Excel: L36/efic)
-  // FIX 1: usa m2_total (con omega) para laminado también
-  // VERIFICADO: 8241.7m2 * 0.25 / 0.85 = $2,424.02 ✓
+  // CORRECCIÓN 1: laminado usa m2_para_laminado (metros_imp × ancho, SIN omega)
+  // dividido entre eficiencia (fórmula Excel: L36 = J4 * precio / efic)
+  // VERIFICADO: metros_imp=25755.2 * 0.32 * 0.25 / 0.85 = $2,424.02 ✓
   let precio_laminado_m2 = 0;
   if (acabados['laminado_autoadhesivo_brillante']) precio_laminado_m2 += 0.25;
   if (acabados['laminado_autoadhesivo_mate']) precio_laminado_m2 += 0.35;
   if (acabados['laminado_uv']) precio_laminado_m2 += 0.25;
 
   const costo_laminado_usd = precio_laminado_m2 > 0
-    ? (m2_total * precio_laminado_m2) / efic
+    ? (m2_para_laminado * precio_laminado_m2) / efic
     : 0;
 
   let costo_otros_acabados = 0;
