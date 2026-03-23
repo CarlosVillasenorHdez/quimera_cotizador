@@ -406,7 +406,7 @@ export function calcularCostoDigital(
   const reglas_simulacion: string[] = [];
 
   const efic = GLOBAL.eficiencia;  // 0.85
-  const TC = GLOBAL.TC;
+  const TC = params.tipo_cambio ?? GLOBAL.TC;  // FIX: usar tipo_cambio del job, no hardcoded
   const cantidad = job.cantidad_millares * 1000;
 
   // Obtener datos de la máquina desde MAQUINAS_DIGITAL
