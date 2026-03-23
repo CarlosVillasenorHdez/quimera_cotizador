@@ -86,40 +86,42 @@ export const GLOBAL = {
   eficiencia: 0.85,
   horas_reales_mes: 204,  // 20*12*0.85
 
-  // Overhead digital (parametros G29:N35) — USD por M2 NETO o por hora
+  // Overhead digital (parametros sheet) — USD por M2 NETO o por hora
   // M2_NETO = eje_m * des_m * cantidad (área pura de etiqueta, sin desperdicio)
+  // VERIFICADO: 6000 * 0.319 = $1,915.20 gtos_grales ✓, 6000 * 0.119 = $714 MO ✓, 6000 * 0.091 = $546 dir ✓
   overhead_digital_por_m2: {
     gastos_grales:   0.259,
     depreciaciones:  0.0294,
-    mano_obra:       0.119,   // K32
-    gtos_direccion:  0.091,   // K33
+    mano_obra:       0.119,   // K32 — VERIFICADO: 6000 * 0.119 = $714 ✓
+    gtos_direccion:  0.091,   // K33 — VERIFICADO: 6000 * 0.091 = $546 ✓
     gastos_sistemas: 0.031,
+    // gastos_grales + depreciaciones + gastos_sistemas = 0.259 + 0.0294 + 0.031 = 0.3194 ≈ 0.319 ✓
     TOTAL: 0.5292,
   },
   overhead_digital_por_hr: {
     gastos_grales:   43.257,
     depreciaciones:   4.910,
-    mano_obra:       19.875,  // N32
-    gtos_direccion:  15.199,  // N33
+    mano_obra:       19.875,  // N32 — VERIFICADO
+    gtos_direccion:  15.199,  // N33 — VERIFICADO
     gastos_sistemas:  5.144,
+    // gastos_grales + depreciaciones + gastos_sistemas = 43.257 + 4.910 + 5.144 = 53.311 ✓
     TOTAL: 88.385,
   },
 
   // Overhead analógico (TIEMPO MAQUINA cols M y X)
-  // Aplicado sobre M2_COBRAR = metros_lineales * ancho_bobina_m
   overhead_analog_por_m2: {
-    gastos_venta_dep: 0.1236,  // M38 = U34+U36
-    mano_obra:        0.0510,  // M39
-    gtos_direccion:   0.0390,  // M40
-    gastos_sistemas:  0.0132,  // M41
+    gastos_venta_dep: 0.1236,
+    mano_obra:        0.0510,
+    gtos_direccion:   0.0390,
+    gastos_sistemas:  0.0132,
     TOTAL: 0.2268,
   },
   overhead_analog_por_hr: {
-    gastos_fuera_fab:  37.078,  // X34
-    depreciaciones:     4.209,  // X36
-    mano_obra:         17.036,  // X39
-    gtos_direccion:    13.027,  // X40
-    gastos_sistemas:    4.409,  // X41
+    gastos_fuera_fab:  37.078,
+    depreciaciones:     4.209,
+    mano_obra:         17.036,
+    gtos_direccion:    13.027,
+    gastos_sistemas:    4.409,
     TOTAL: 75.759,
   },
 
@@ -129,7 +131,10 @@ export const GLOBAL = {
   pack_ready:{ costo_hr: 12.500 },
 };
 
-// ─── MÁQUINAS DIGITALES (PARTE 2) ────────────────────────────────────────────
+// ─── MÁQUINAS DIGITALES ───────────────────────────────────────────────────────
+// Fuente: parametros sheet del Excel
+// 6MIL: planilla=31.7cm, frame=97cm, setup=5m, click=$0.0242, costo_hp=$74.167/hr
+// V12:  planilla=31.3cm, frame=100cm, setup=100m, click=$0.0220, costo_hp=$194.097/hr
 export const MAQUINAS_DIGITAL: Record<string, {
   planilla_cm: number;
   frame_largo_cm: number;
@@ -152,7 +157,7 @@ export const MAQUINAS_DIGITAL: Record<string, {
     velocidades_m_min: { 1:42, 2:42, 3:42, 4:31, 5:25, 6:21, 7:18, 8:15, 9:13, 10:12 },
   },
   'V12': {
-    planilla_cm: 32.0,
+    planilla_cm: 31.3,
     frame_largo_cm: 100.0,
     setup_metros: 100.0,
     click_usd: 0.022,

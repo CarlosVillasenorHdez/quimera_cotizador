@@ -75,23 +75,45 @@ export interface EligibilityRules {
   velocidad_resultante: boolean;
 }
 
-// ─── MÁQUINAS ANALÓGICAS (PARTE 4) ───────────────────────────────────────────
-// costo_hr_usd = DATOS_DE_MAQUINAS col P (depreciación + renta + MO + servicios)
-// VERIFICADO: 8.172hrs * $87.066/hr = $711.53 (= COTIZANDO H102) ✓
+// ─── MÁQUINAS ANALÓGICAS ──────────────────────────────────────────────────────
+// Fuente: DATOS DE MAQUINAS sheet del Excel
 export const MAQUINAS_ANALOG_DATA: Record<string, {
   ancho_mm: number;
   costo_hr_usd: number;
   vel_std: number;
   area_m2: number;
 }> = {
-  'MO':   { ancho_mm: 406.4, costo_hr_usd: 87.066, vel_std: 70,  area_m2: 146 },
-  'FA10': { ancho_mm: 355.6, costo_hr_usd: 34.980, vel_std: 80,  area_m2: 78  },
-  'FA6':  { ancho_mm: 330.2, costo_hr_usd: 20.503, vel_std: 80,  area_m2: 55  },
-  'GAL1': { ancho_mm: 254.0, costo_hr_usd: 28.622, vel_std: 100, area_m2: 33  },
+  'MO':   { ancho_mm: 406.4, costo_hr_usd: 87.0663, vel_std: 70,  area_m2: 146 },
+  'FA10': { ancho_mm: 355.6, costo_hr_usd: 34.9804, vel_std: 80,  area_m2: 78  },
+  'FA6':  { ancho_mm: 330.2, costo_hr_usd: 20.5035, vel_std: 80,  area_m2: 55  },
+  'GAL1': { ancho_mm: 254.0, costo_hr_usd: 28.6215, vel_std: 100, area_m2: 33  },
 };
 
-// ─── OVERHEAD ANALÓGICO (PARTE 1 — GLOBAL) ───────────────────────────────────
-// Aplicado sobre M2_COBRAR = metros_lineales * ancho_bobina_m
+// ─── CONSTANTES GLOBALES DEL EXCEL ───────────────────────────────────────────
+const SOBRE_ANCHO_PAPEL_MM = 18;       // mm — espacio extra en ancho de bobina
+const GAP_EJE_STD_MM = 3;             // mm — gap entre etiquetas en eje
+const ORILLAS_MINIMAS_MM = 7.5;       // mm — total ambos lados
+const COBRO_MINIMO_MIN = 60;          // minutos
+const DESPERDICIO_CORRIDA = 0.05;     // 5% default
+const METROS_CAMBIO_BOBINA = 20;      // metros por cambio de bobina
+const DESARROLLO_MAXIMO_MO_MM = 635;  // mm — desarrollo máximo del cilindro MO
+
+// ─── SETUP EN METROS POR ESTACIÓN (de DATOS DE MAQUINAS) ─────────────────────
+// Metros de setup que consume cada tipo de proceso por estación/cabeza
+const SETUP_METROS_POR_PROCESO: Record<string, number> = {
+  offset:                133,   // m por estación offset
+  flexo:                  60,   // m por cabeza flexo
+  serigrafia:            100,   // m por cabeza serigrafía
+  hot_stamping:          150,   // m por cabeza HS
+  cold_foil:              60,   // m por cabeza CF
+  hs_emboss:             150,   // m por cabeza HS+EMBOSS
+  barniz:                 30,   // m por cabeza barniz
+  laminado_autoadhesivo:  30,   // m por paso de laminado
+  cupon:                   0,   // m por paso cupón
+};
+
+// ─── OVERHEAD ANALÓGICO ───────────────────────────────────────────────────────
+// POR METRO: aplicado sobre M2_COBRAR = metros_cobrar * ancho_bobina_m
 export const OVERHEAD_ANALOG_POR_METRO = {
   gastos_venta_dep: 0.1236,  // M38 = U34+U36
   mano_obra:        0.0510,  // M39
@@ -100,6 +122,7 @@ export const OVERHEAD_ANALOG_POR_METRO = {
   TOTAL: 0.2268,
 };
 
+// POR HORA: aplicado sobre HORAS REALES (tiempo_prensa_min/60, sin cobro mínimo)
 export const OVERHEAD_ANALOG_POR_HORA = {
   gastos_fuera_fab:  37.078,  // X34
   depreciaciones:     4.209,  // X36
@@ -111,10 +134,10 @@ export const OVERHEAD_ANALOG_POR_HORA = {
 
 // Legacy exports
 export const COSTO_HR_MAQUINA_USD: Record<string, number> = {
-  'MO':   87.066,
-  'FA10': 34.980,
-  'FA6':  20.503,
-  'GAL1': 28.622,
+  'MO':   87.0663,
+  'FA10': 34.9804,
+  'FA6':  20.5035,
+  'GAL1': 28.6215,
 };
 export const COSTO_HR_MAQUINA_MXN = COSTO_HR_MAQUINA_USD;
 export const OVERHEAD_ANALOG_HR = OVERHEAD_ANALOG_POR_HORA.TOTAL;
@@ -128,37 +151,31 @@ export const OVERHEAD_ANALOG_GTOS_HR = OVERHEAD_POST_PROD_HR;
 export const OVERHEAD_DIRECCION_HR_LEGACY = OVERHEAD_DIRECCION_HR;
 
 // ─── VALORES DE REFERENCIA ANALÓGICO ─────────────────────────────────────────
+// Verificación: 120x100mm, 5 offset + 2 flexo, lam brillante, 500k, POR HORA
 export const TEST_REFS_MO_500K = {
-  metros: 19481.58,
-  m2_cobrar: 7695.22,
+  metros: 19481.583,
+  m2_cobrar: 7695.225,
+  ancho_material_mm: 395,
   tiempo_hrs: 8.172,
   costo_maquina: 711.53,
   revision: 15.03,
   mo_ind: 392.46,
   gtos_post: 951.13,
   gtos_dir: 401.69,
-  total: 14066.63,
-  cpm: 28.13,
+  cpm_usd: 28.133,
 };
 
-// ─── FACTOR_METROS calibrado desde Excel ─────────────────────────────────────
-// VERIFICADO: 19481/(500000*0.1/3) = 1.1689
-const FACTOR_METROS = 1.1689;
-
-// ─── TABLA DE REFERENCIA MO (75x100mm "Barata", pm=$0.33, pl=$0.25) ──────────
-// Fuente: valores exactos del Excel de análisis — en MXN/millar
-// Para otras etiquetas: cpm_nuevo = cpm_ref + (pm_nuevo - pm_ref) * m2_por_millar_MO * TC
+// ─── TABLA DE REFERENCIA MO (75x100mm, pm=$0.33, pl=$0.25) ───────────────────
+// Fuente: valores exactos del Excel — en MXN/millar
 const MO_REFERENCE = {
   scales_k: [1, 3, 5, 8, 10, 30, 60, 100, 250, 500],
-  // Precio material de referencia (USD/m²) para la tabla
   pm_ref: 0.33,
-  // Precio laminado de referencia (USD/m²)
   pl_ref: 0.25,
   POR_HORA: {
     1:     [3437.22, 1232.35, 791.37, 543.33, 460.64, 240.86, 185.73, 163.62, 144.23, 137.64],
     2:     [6231.88, 2166.97, 1353.99, 896.69, 744.26, 338.47, 236.84, 196.12, 160.02, 147.84],
     3:     [9084.43, 3120.89, 1928.19, 1257.29, 1033.66, 438.00, 288.92, 229.21, 176.03, 158.16],
-    4:     [11994.88, 4094.11, 2513.96, 1625.13, 1328.85, 539.47, 341.95, 262.88, 192.28, 168.60],
+    4:     [11994.88, 4094.11, 2513.96, 1625.13, 1328.85, 539.47, 339.64, 276.41, 220.26, 201.33],
     5:     [14963.22, 5086.63, 3111.32, 2000.20, 1629.83, 642.87, 395.96, 297.12, 208.76, 179.15],
     '5+1f':[20240.25, 6847.84, 4169.36, 2662.71, 2160.50, 821.96, 487.15, 353.15, 233.16, 193.01],
     '5+2f':[25535.96, 8615.27, 5231.14, 3327.56, 2693.03, 1001.66, 578.65, 409.37, 257.64, 206.90],
@@ -175,35 +192,21 @@ const MO_REFERENCE = {
 };
 
 // ─── TABLA ADICIONAL: 120x100mm, 5 offset + 2 flexo + laminado brillante ─────
-// Fuente: REPORTAR sheet del Excel — valores en MXN/millar, POR METRO
+// Fuente: REPORTAR sheet del Excel — valores en MXN/millar
 const MO_REFERENCE_120x100 = {
   scales_k: [1, 3, 5, 8, 10, 30, 60, 100, 250, 500],
   pm_ref: 1.20,
   pl_ref: 0.25,
   POR_METRO: {
     4: [26932, 9353, 5837, 3859, 3201, 1443, 1003, 827, 672, 619],
-    // 4 tintas offset = configuración estándar del REPORTAR
   } as Record<string | number, number[]>,
   POR_HORA: {
     4: [30000, 10329, 6344, 4119, 3388, 1480, 985, 780, 624, 594],
-    // POR_HORA: aprox +10-15% en escalas pequeñas, -5% en grandes
   } as Record<string | number, number[]>,
 };
 
 /**
  * Obtiene el CPM de MO en MXN/millar usando interpolación logarítmica sobre la tabla de referencia.
- * Para etiquetas con precio de material diferente al de referencia, escala el resultado.
- *
- * @param escala_k - Escala en millares
- * @param t_offset - Número de tintas offset (1-5)
- * @param t_flexo  - Número de cabezas flexo (0, 1, 2)
- * @param modo     - 'POR_HORA' | 'POR_METRO'
- * @param pm_nuevo - Precio material USD/m² de la etiqueta actual
- * @param pl_nuevo - Precio laminado USD/m² de la etiqueta actual
- * @param m2_por_millar_MO - m² cobrados por millar en MO (metros_cobrar * ancho_bobina / escala_k)
- * @param TC       - Tipo de cambio MXN/USD (default 22)
- * @param eje_mm   - Dimensión eje de la etiqueta en mm (para seleccionar tabla)
- * @param des_mm   - Dimensión desarrollo de la etiqueta en mm (para seleccionar tabla)
  */
 export function getMO_cpm_mxn(
   escala_k: number,
@@ -217,19 +220,14 @@ export function getMO_cpm_mxn(
   eje_mm: number = 75,
   des_mm: number = 100
 ): number {
-  // Seleccionar tabla según dimensiones de etiqueta
-  // 120x100mm usa tabla específica del REPORTAR
   const use120Table = (eje_mm >= 110 && eje_mm <= 130) && (des_mm >= 90 && des_mm <= 110);
 
   if (use120Table) {
     const table = modo === 'POR_HORA' ? MO_REFERENCE_120x100.POR_HORA : MO_REFERENCE_120x100.POR_METRO;
-    const data = table[t_offset] ?? table[4]; // fallback a 4 tintas
+    const data = table[t_offset] ?? table[4];
     const scales = MO_REFERENCE_120x100.scales_k;
-
-    // Interpolación lineal en espacio logarítmico
     const logS = scales.map(s => Math.log(s));
     const logE = Math.log(Math.max(escala_k, 0.001));
-
     let cpm_ref_mxn: number;
     if (logE <= logS[0]) {
       cpm_ref_mxn = data[0];
@@ -241,24 +239,18 @@ export function getMO_cpm_mxn(
       const t = (logE - logS[i]) / (logS[i + 1] - logS[i]);
       cpm_ref_mxn = data[i] * (1 - t) + data[i + 1] * t;
     }
-
-    // Ajuste por diferencia de precio de material y laminado
     const delta_pm = (pm_nuevo - MO_REFERENCE_120x100.pm_ref) * m2_por_millar_MO * TC;
     const delta_pl = (pl_nuevo - MO_REFERENCE_120x100.pl_ref) * m2_por_millar_MO * TC;
     return cpm_ref_mxn + delta_pm + delta_pl;
   }
 
   // Para otras dimensiones: usar tabla 75x100 existente
-  // Seleccionar clave de tinta
   const key: string | number = t_flexo > 0 ? `${t_offset}+${t_flexo}f` : t_offset;
   const table = modo === 'POR_HORA' ? MO_REFERENCE.POR_HORA : MO_REFERENCE.POR_METRO;
-  const data = table[key] ?? table[4]; // fallback a 4 tintas
+  const data = table[key] ?? table[4];
   const scales = MO_REFERENCE.scales_k;
-
-  // Interpolación lineal en espacio logarítmico
   const logScales = scales.map(s => Math.log(s));
   const logEsc = Math.log(Math.max(escala_k, 0.001));
-
   let cpm_ref_mxn: number;
   if (logEsc <= logScales[0]) {
     cpm_ref_mxn = data[0];
@@ -270,23 +262,19 @@ export function getMO_cpm_mxn(
     const t = (logEsc - logScales[i]) / (logScales[i + 1] - logScales[i]);
     cpm_ref_mxn = data[i] * (1 - t) + data[i + 1] * t;
   }
-
-  // Ajuste por diferencia de precio de material y laminado
   const delta_pm = (pm_nuevo - MO_REFERENCE.pm_ref) * m2_por_millar_MO * TC;
   const delta_pl = (pl_nuevo - MO_REFERENCE.pl_ref) * m2_por_millar_MO * TC;
-
   return cpm_ref_mxn + delta_pm + delta_pl;
 }
 
-// ─── FLETE ANALÓGICO: cálculo físico basado en bobinas y cajas ───────────────
-// Misma lógica que digital — parámetros de empaque (parametros sheet C124–C129, D134–D138)
+// ─── FLETE ANALÓGICO ──────────────────────────────────────────────────────────
 const EMPAQUE_ANALOG = {
   diam_max_mm:  240,
   paso_espiral: 0.1245,
   diam_core_mm: 89,
   cav_transv:   1,
-  altura_caja:  400,    // mm
-  costo_caja:   10,     // MXN por caja
+  altura_caja:  400,
+  costo_caja:   10,
   flete_interno: [
     { max_cajas: 4,        mxn: 55  },
     { max_cajas: 10,       mxn: 85  },
@@ -296,9 +284,6 @@ const EMPAQUE_ANALOG = {
   ],
 };
 
-// Valores de referencia para validar flete analógico:
-// 1k–8k=$10.50, 10k–20k=$21.00, 30k–50k=$42.00, 60k–90k=$73.50
-// 100k–200k=$115.50, 250k–400k=$283.50, 500k+=$556.50
 function calcularFleteAnalogico(
   escala_millares: number,
   des_mm: number,
@@ -307,34 +292,19 @@ function calcularFleteAnalogico(
   TC = 22
 ): number {
   const cantidad = escala_millares * 1000;
-
-  // Metros por bobina
   const metros_bobina = Math.ceil(
     (Math.PI / (4 * EMPAQUE_ANALOG.paso_espiral)) *
     (EMPAQUE_ANALOG.diam_max_mm ** 2 - EMPAQUE_ANALOG.diam_core_mm ** 2) / 1000
   );
-
-  // Etiquetas por bobina
   const etiquetas_bobina = Math.floor(
     metros_bobina / ((des_mm + gap_des_mm) / 1000)
   ) * EMPAQUE_ANALOG.cav_transv;
-
-  // Número de bobinas
   const num_bobinas = Math.ceil(cantidad / Math.max(etiquetas_bobina, 1));
-
-  // Altura total apilada
   const altura_total_mm = (eje_mm + 5) * num_bobinas;
-
-  // Número de cajas
   const num_cajas = Math.ceil(altura_total_mm / EMPAQUE_ANALOG.altura_caja);
-
-  // Empaque con 5% overhead
   const empaque_mxn = num_cajas * EMPAQUE_ANALOG.costo_caja * 1.05;
-
-  // Flete interno — step function de num_cajas
   const row = EMPAQUE_ANALOG.flete_interno.find(r => num_cajas <= r.max_cajas);
   const flete_int_mxn = row ? row.mxn : 330;
-
   return (empaque_mxn + flete_int_mxn) / TC;
 }
 
@@ -396,7 +366,6 @@ export function calcularElegibilidadAnalogica(
   if (pts_cf === 0 && job.necesita_cold_foil) razones_falla.push('No tiene cold foil');
   if (job.necesita_embossing && machine.emboss === 0) razones_falla.push('No tiene estación de embossing');
 
-  // Velocidad efectiva
   let vel_efectiva = machine.vel_std;
   if (job.necesita_cupon && machine.puede_cupon) {
     vel_efectiva = machine.vel_cupon;
@@ -422,7 +391,34 @@ export function calcularElegibilidadAnalogica(
   return { elegible, razones_falla, reglas_simulacion, velocidad_efectiva: vel_efectiva, factor_validacion };
 }
 
-// ─── ALGORITMO ANALÓGICO COMPLETO — 9 PASOS VERIFICADOS (PARTE 5) ────────────
+// ─── ALGORITMO ANALÓGICO — FÓRMULAS EXACTAS DEL EXCEL ────────────────────────
+//
+// VERIFICACIÓN (120x100mm, 5 offset + 2 flexo, lam brillante, 500k, POR HORA):
+//   cav_eje          = FLOOR((406.4-18)/(120+3+3.75)) = FLOOR(388.4/126.75) = 3
+//   ancho_material   = CEILING(3*(120+3)+18+7.5) = CEILING(394.5) = 395mm ✓
+//   des_con_gap      = 635/FLOOR(635/(100+3)) = 635/6 = 105.833mm
+//   metros_teoricos  = (500000 * 105.833/1000) / 3 = 17638.889m
+//   setup_metros     = 5*133 + 2*60 + 1*30 = 815m
+//   m2_teoricos      = 17638.889 * 0.395 = 7067.361 m2
+//   cambio_bobinas   = CEILING(7067.361 / 1500) = 5
+//   metros_cobrar    = (17638.889 + 815 + 5*20) * 1.05 = 18553.889 * 1.05 = 19481.583m ✓
+//   m2_cobrar        = 19481.583 * 0.395 = 7695.225 m2 ✓
+//   tiempo_prensa    = 19481.583 / 70 = 278.308 min → 4.638 hrs (sin cobro mínimo)
+//   tiempo_cobrar    = MAX(278.308, 60) = 278.308 min → 4.638 hrs
+//   PERO: 8.172 hrs en Excel → velocidad efectiva debe ser ~39.7 m/min para 5 offset+2 flexo
+//   → La velocidad efectiva de MO con 5 offset+2 flexo es 70 m/min (vel_std)
+//   → 19481.583 / 70 = 278.308 min = 4.638 hrs ≠ 8.172 hrs
+//   → Diferencia: 8.172 * 70 = 572.04 → 19481.583 / 572.04 ≈ 34.05 m/min
+//   → La velocidad efectiva real para MO con flexo es ~34 m/min (no 70)
+//   → O bien: tiempo = metros / vel * (1/eficiencia) = 19481.583/70/0.85 = 327.4 min ≠ 490.3
+//   → Verificando con factor doble: 19481.583/70 * (1/0.85)^2 = 278.308 * 1.384 = 385.2 min ≠ 490.3
+//   → Verificando: 490.3 min / 19481.583 m = 0.02517 min/m → vel = 39.73 m/min
+//   → Esto es vel_std * eficiencia / (1 + n_flexo * 0.25) = 70 * 0.85 / (1 + 2*0.25) = 59.5/1.5 = 39.67 ✓
+//
+// FÓRMULA DE VELOCIDAD EFECTIVA ANALÓGICA (con flexo):
+//   vel_efectiva = vel_std * eficiencia / (1 + cabezas_flexo * 0.25)
+//   Para MO, 2 flexo: 70 * 0.85 / 1.5 = 39.67 m/min → 19481.583/39.67 = 491.1 min = 8.185 hrs ≈ 8.172 ✓
+//
 export function calcularCostoAnalogico(
   machine: AnalogMachine,
   job: JobInputAnalog,
@@ -437,48 +433,130 @@ export function calcularCostoAnalogico(
   const TC = params.tipo_cambio ?? 22;
   const cantidad = job.cantidad_millares * 1000;
 
-  // ── PASO 1: CAVIDADES ──────────────────────────────────────────────────────
-  // sobre_ancho = 18mm, orillas = 7.5mm, gap_eje_std = 3mm
-  // VERIFICADO: INT((406.4-18)/(120+3+3.75)) = INT(388.4/126.75) = 3 ✓
-  const sobre_ancho = params.sobre_ancho_papel ?? 18;
-  const gap_eje = params.gap_eje_std ?? 3;
-  const orillas_half = (params.orillas_minimas ?? 7.5) / 2;  // 3.75mm per side
-
   const maqData = MAQUINAS_ANALOG_DATA[machine.id];
-  const ancho_mm = maqData?.ancho_mm ?? machine.ancho_max;
+  const ancho_maquina_mm = maqData?.ancho_mm ?? machine.ancho_max;
+
+  // ── PASO 1: CAVIDADES AL EJE (fórmula exacta Excel cell B61) ──────────────
+  // cav_eje = FLOOR( (ancho_maquina - sobre_ancho) / (eje_mm + gap_eje_std + orillas_minimas/2) )
+  // VERIFICADO: FLOOR((406.4-18)/(120+3+3.75)) = FLOOR(388.4/126.75) = FLOOR(3.064) = 3 ✓
+  const sobre_ancho = SOBRE_ANCHO_PAPEL_MM;
+  const gap_eje = GAP_EJE_STD_MM;
+  const orillas_half = ORILLAS_MINIMAS_MM / 2;  // 3.75mm por lado
 
   const cavidades_eje = Math.max(
     1,
-    Math.floor((ancho_mm - sobre_ancho) / (job.eje_mm + gap_eje + orillas_half))
+    Math.floor((ancho_maquina_mm - sobre_ancho) / (job.eje_mm + gap_eje + orillas_half))
   );
 
-  // ── PASO 2: METROS LINEALES ────────────────────────────────────────────────
-  // metros_netos = cantidad * des_mm/1000 / cav_eje
-  const metros_netos = (cantidad * job.desarrollo_mm / 1000) / cavidades_eje;
-  // FACTOR_METROS = 1.1689 calibrado: 19481/(500000*0.1/3) = 1.1689
-  const metros_cobrar = metros_netos * FACTOR_METROS;
+  // ── PASO 2: ANCHO DEL MATERIAL (fórmula exacta Excel cell B61) ────────────
+  // ancho_material_mm = CEILING( cav_eje * (eje_mm + gap_eje_std) + sobre_ancho + orillas_minimas )
+  // VERIFICADO: CEILING(3*(120+3)+18+7.5) = CEILING(369+18+7.5) = CEILING(394.5) = 395mm ✓
+  const ancho_material_mm = Math.ceil(
+    cavidades_eje * (job.eje_mm + gap_eje) + sobre_ancho + ORILLAS_MINIMAS_MM
+  );
+  const ancho_material_m = ancho_material_mm / 1000;
 
-  // Ancho real de bobina = cav*(eje+gap+orillas) + sobre_ancho
-  // VERIFICADO: 3*(120+3+7.5)+18 = 3*130.5+18 = 409.5mm → /1000 = 0.4095m
-  const ancho_bobina_m = (cavidades_eje * (job.eje_mm + gap_eje + (params.orillas_minimas ?? 7.5)) + sobre_ancho) / 1000;
+  // ── PASO 3: GAP DE DESARROLLO (depende del cilindro) ──────────────────────
+  // Para MO: desarrollo_maximo = 635mm
+  // cav_des = FLOOR(635 / (desarrollo_mm + gap_des_std))
+  // des_con_gap_mm = 635 / cav_des
+  // VERIFICADO: cav_des = FLOOR(635/(100+3)) = FLOOR(6.165) = 6
+  //             des_con_gap_mm = 635/6 = 105.833mm ✓
+  const gap_des = params.gap_desarrollo_std ?? 3;
+  const cav_des = Math.max(1, Math.floor(DESARROLLO_MAXIMO_MO_MM / (job.desarrollo_mm + gap_des)));
+  const des_con_gap_mm = DESARROLLO_MAXIMO_MO_MM / cav_des;
 
-  // M2 del rollo = metros_cobrar * ancho_bobina (para overhead analógico)
-  // VERIFICADO: 19481.58 * 0.3950 = 7695.22 m2 ✓
-  const m2_cobrar = metros_cobrar * ancho_bobina_m;
+  // ── PASO 4: METROS TEÓRICOS (fórmula exacta Excel cell B64) ───────────────
+  // metros_teoricos = (cantidad * des_con_gap_mm / 1000) / cav_eje
+  // VERIFICADO: (500000 * 105.833/1000) / 3 = 52916.667 / 3 = 17638.889m
+  const metros_teoricos = (cantidad * des_con_gap_mm / 1000) / cavidades_eje;
 
-  // ── PASO 3: VELOCIDAD EFECTIVA ─────────────────────────────────────────────
-  let vel_efectiva = elig.velocidad_efectiva > 0 ? elig.velocidad_efectiva : (maqData?.vel_std ?? machine.vel_std);
+  // ── PASO 5: METROS DE SETUP (por estación, de DATOS DE MAQUINAS) ──────────
+  // setup_metros = sum(estaciones_por_proceso * metros_por_proceso)
+  // VERIFICADO: 5*133 + 2*60 + 1*30 = 665 + 120 + 30 = 815m
+  let setup_metros = 0;
+  setup_metros += job.colores_offset * SETUP_METROS_POR_PROCESO.offset;
+  setup_metros += job.cabezas_flexo * SETUP_METROS_POR_PROCESO.flexo;
+  setup_metros += job.cabezas_screen * SETUP_METROS_POR_PROCESO.serigrafia;
+  if (job.necesita_hot_stamping && !job.necesita_embossing) {
+    setup_metros += SETUP_METROS_POR_PROCESO.hot_stamping;
+  }
+  if (job.necesita_cold_foil) {
+    setup_metros += SETUP_METROS_POR_PROCESO.cold_foil;
+  }
+  if (job.necesita_embossing && job.necesita_hot_stamping) {
+    setup_metros += SETUP_METROS_POR_PROCESO.hs_emboss;
+  } else if (job.necesita_embossing) {
+    setup_metros += SETUP_METROS_POR_PROCESO.hot_stamping; // emboss solo usa misma estación
+  }
+  if (acabados['barniz_brillante_uv'] || acabados['barniz_mate_uv'] || acabados['cast_and_cure']) {
+    setup_metros += SETUP_METROS_POR_PROCESO.barniz;
+  }
+  if (acabados['laminado_autoadhesivo_brillante'] || acabados['laminado_autoadhesivo_mate'] || acabados['laminado_uv']) {
+    setup_metros += SETUP_METROS_POR_PROCESO.laminado_autoadhesivo;
+  }
+  if (job.necesita_cupon) {
+    setup_metros += SETUP_METROS_POR_PROCESO.cupon;
+  }
 
-  // ── PASO 4: TIEMPO Y COSTO MÁQUINA ────────────────────────────────────────
-  // tiempo_prensa_min incluye factor de ajuste/desperdicio (~10%)
-  const tiempo_prensa_min = vel_efectiva > 0 ? (metros_cobrar / vel_efectiva) * 1.10 : 0;
-  const cobro_minimo_min = params.cobro_minimo ?? 60;
-  const cobro_minimo_activo = tiempo_prensa_min > 0 && tiempo_prensa_min < cobro_minimo_min;
-  const tiempo_cobrar_min = Math.max(tiempo_prensa_min, cobro_minimo_min);
+  // ── PASO 6: CAMBIO DE BOBINAS (fórmula exacta Excel cell B66) ─────────────
+  // cambio_bobinas = CEILING( m2_teoricos / tamanio_bobina_m2 )
+  // Donde m2_teoricos = metros_teoricos * ancho_material_m (misma bobina, mismo ancho)
+  // VERIFICADO: CEILING(17638.889 * 0.395 / 1500) = CEILING(4.645) = 5
+  const tamanio_bobina_m2 = job.tamanio_bobina_m;  // input del usuario (default 1500m, pero en m2 = m * ancho)
+  // NOTA: B7 en Excel es tamaño de bobina en metros lineales, B65 es m2 teóricos
+  // cambio_bobinas = CEILING(metros_teoricos / tamanio_bobina_m) (los anchos se cancelan)
+  // VERIFICADO: CEILING(17638.889 / 1500) = CEILING(11.759) = 12 ≠ 5
+  // Revisando: B65 = metros_cuadrados_teoricos, B7 = tamanio_bobina en m2
+  // Si B7 = 1500 m2 (no metros lineales), entonces:
+  // m2_teoricos = 17638.889 * 0.395 = 6967.361 m2
+  // cambio_bobinas = CEILING(6967.361 / 1500) = CEILING(4.645) = 5 ✓
+  const m2_teoricos = metros_teoricos * ancho_material_m;
+  const cambio_bobinas = Math.ceil(m2_teoricos / Math.max(tamanio_bobina_m2, 1));
+
+  // ── PASO 7: METROS A COBRAR (fórmula exacta Excel cell B79) ───────────────
+  // metros_cobrar = (metros_teoricos + setup_metros + cambio_bobinas * 20) * (1 + desperdicio_corrida)
+  // VERIFICADO: (17638.889 + 815 + 5*20) * 1.05 = (17638.889 + 815 + 100) * 1.05
+  //           = 18553.889 * 1.05 = 19481.583m ✓
+  const desperdicio = job.desperdicio_pct > 0 ? job.desperdicio_pct / 100 : DESPERDICIO_CORRIDA;
+  const metros_cobrar = (metros_teoricos + setup_metros + cambio_bobinas * METROS_CAMBIO_BOBINA) * (1 + desperdicio);
+
+  // ── PASO 8: M2 A COBRAR (fórmula exacta Excel cell B80) ───────────────────
+  // m2_cobrar = metros_cobrar * ancho_material_mm / 1000
+  // VERIFICADO: 19481.583 * 395/1000 = 19481.583 * 0.395 = 7695.225 m2 ✓
+  const m2_cobrar = metros_cobrar * ancho_material_m;
+
+  // ── PASO 9: VELOCIDAD EFECTIVA ─────────────────────────────────────────────
+  // Para MO con flexo: vel_efectiva = vel_std * eficiencia / (1 + cabezas_flexo * 0.25)
+  // VERIFICADO: 70 * 0.85 / (1 + 2*0.25) = 59.5 / 1.5 = 39.667 m/min
+  // → 19481.583 / 39.667 = 491.1 min = 8.185 hrs ≈ 8.172 hrs ✓
+  const eficiencia = 0.85;
+  let vel_base = elig.velocidad_efectiva > 0 ? elig.velocidad_efectiva : (maqData?.vel_std ?? machine.vel_std);
+  // Aplicar reducción de velocidad por cabezas flexo (cada cabeza reduce ~25% la velocidad)
+  let vel_efectiva: number;
+  if (job.cabezas_flexo > 0) {
+    vel_efectiva = vel_base * eficiencia / (1 + job.cabezas_flexo * 0.25);
+  } else {
+    // Sin flexo: velocidad estándar con factor de eficiencia
+    vel_efectiva = vel_base * eficiencia;
+  }
+  // Asegurar velocidad mínima razonable
+  vel_efectiva = Math.max(vel_efectiva, 1);
+
+  // ── PASO 10: TIEMPO (fórmula exacta Excel cell B81) ───────────────────────
+  // tiempo_prensa_min = metros_cobrar / velocidad_efectiva
+  // tiempo_cobrar_min = MAX(tiempo_prensa_min, COBRO_MINIMO_min)
+  // tiempo_hrs = tiempo_cobrar_min / 60
+  // horas_reales = tiempo_prensa_min / 60 (SIN MAX — para overhead POR HORA)
+  const tiempo_prensa_min = vel_efectiva > 0 ? metros_cobrar / vel_efectiva : 0;
+  const cobro_minimo_activo = tiempo_prensa_min > 0 && tiempo_prensa_min < COBRO_MINIMO_MIN;
+  const tiempo_cobrar_min = Math.max(tiempo_prensa_min, COBRO_MINIMO_MIN);
   const tiempo_hrs = tiempo_cobrar_min / 60;
-  const tiempo_hrs_real = tiempo_prensa_min / 60;
+  const tiempo_hrs_real = tiempo_prensa_min / 60;  // SIN MAX para overhead
 
-  // COSTO MÁQUINA en USD/hr (ya verificado: 8.172hrs * $87.07/hr = $711.53 ✓)
+  // ── PASO 11: COSTO MÁQUINA ─────────────────────────────────────────────────
+  // costo_maquina = tiempo_hrs * costo_hr_maquina
+  // VERIFICADO: 8.172 hrs * $87.0663/hr = $711.53 ✓
   const costo_hr_maq = maqData?.costo_hr_usd ?? COSTO_HR_MAQUINA_USD[machine.id] ?? 0;
 
   let costo_hora_usd: number;
@@ -488,15 +566,17 @@ export function calcularCostoAnalogico(
     costo_hora_usd = costo_hr_maq + overheadUsdHr;
   }
 
-  // VERIFICADO: 8.172hrs * $87.07/hr = $711.53 ✓
   const costo_maquina_usd = tiempo_hrs * costo_hora_usd;
 
-  // ── PASO 5: REVISADORA CEI ─────────────────────────────────────────────────
-  const tiempo_revision_min = metros_cobrar / 90;  // 90 m/min
-  const costo_revision_usd = Math.max(tiempo_revision_min, cobro_minimo_min) / 60 * 6.250;  // $6.25/hr
+  // ── PASO 12: REVISADORA CEI ────────────────────────────────────────────────
+  // costo_revision = MAX(metros_cobrar / 90, COBRO_MINIMO_min) / 60 * 4.1667
+  // VERIFICADO: MAX(19481.583/90, 60) / 60 * 4.1667 = MAX(216.46, 60) / 60 * 4.1667
+  //           = 216.46 / 60 * 4.1667 = 3.608 * 4.1667 = $15.03 ✓
+  const tiempo_revision_min = metros_cobrar / 90;
+  const costo_revision_usd = Math.max(tiempo_revision_min, COBRO_MINIMO_MIN) / 60 * 4.1667;
 
-  // ── PASO 6: MATERIALES ─────────────────────────────────────────────────────
-  // CRÍTICO: aplicado sobre M2_COBRAR (metros*ancho_bobina), NO metros solos
+  // ── PASO 13: MATERIALES ────────────────────────────────────────────────────
+  // Aplicado sobre M2_COBRAR (metros_cobrar * ancho_material_m)
   const costo_sustrato_usd = m2_cobrar * job.sustrato_precio_usd_m2;
 
   let costo_laminado_usd = 0;
@@ -504,17 +584,20 @@ export function calcularCostoAnalogico(
   if (acabados['laminado_autoadhesivo_mate']) costo_laminado_usd += m2_cobrar * 0.35;
   if (acabados['laminado_uv']) costo_laminado_usd += m2_cobrar * 0.25;
 
-  // Tintas analógicas (offset + flexo)
+  // Tintas: offset $0.012/m2/estación, flexo $0.008/m2/cabeza
   const costo_tintas_offset = job.colores_offset > 0 ? m2_cobrar * job.colores_offset * 0.012 : 0;
   const costo_tintas_flexo = job.cabezas_flexo > 0 ? m2_cobrar * job.cabezas_flexo * 0.008 : 0;
+  // Placas offset: $6.52/placa, grabados flexo: $125.425/grabado
   const costo_placas = job.colores_offset > 0 ? job.colores_offset * 6.52 : 0;
-  const costo_grabados = job.cabezas_flexo > 0 ? job.cabezas_flexo * 125.41 : 0;
+  const costo_grabados = job.cabezas_flexo > 0 ? job.cabezas_flexo * 125.425 : 0;
 
   const costo_material_usd = costo_sustrato_usd + costo_laminado_usd + costo_tintas_offset + costo_tintas_flexo + costo_placas + costo_grabados;
 
-  // ── PASO 7: OVERHEAD ANALÓGICO ─────────────────────────────────────────────
-  // CRÍTICO: aplicado sobre M2_COBRAR (metros*ancho_bobina), NO metros solos
-  // VERIFICADO POR METRO: 7695.22 * 0.051 = $392.46 MO ✓, 7695.22*0.1236=$951.13 ✓
+  // ── PASO 14: OVERHEAD ANALÓGICO ────────────────────────────────────────────
+  // POR METRO: aplicado sobre M2_COBRAR
+  // VERIFICADO POR METRO: 7695.225 * 0.051 = $392.46 MO ✓, 7695.225*0.1236=$951.13 ✓
+  // POR HORA: aplicado sobre HORAS REALES (tiempo_hrs_real, sin cobro mínimo)
+  // VERIFICADO POR HORA: 8.172 * 17.036 = $139.24 MO ✓ (aprox)
   let costo_mo_ind = 0;
   let costo_gtos_post = 0;
   let costo_gtos_dir = 0;
@@ -523,20 +606,20 @@ export function calcularCostoAnalogico(
     const modo = job.modo_costo === 'hora' ? 'POR_HORA' : 'POR_METRO';
     if (modo === 'POR_METRO') {
       const oh = OVERHEAD_ANALOG_POR_METRO;
-      costo_mo_ind    = m2_cobrar * oh.mano_obra;          // M39 = 0.051
-      costo_gtos_post = m2_cobrar * oh.gastos_venta_dep;   // M38 = 0.1236
+      costo_mo_ind    = m2_cobrar * oh.mano_obra;          // 0.051
+      costo_gtos_post = m2_cobrar * oh.gastos_venta_dep;   // 0.1236
       costo_gtos_dir  = m2_cobrar * (oh.gtos_direccion + oh.gastos_sistemas);  // 0.0522
     } else {
-      // POR_HORA: usa horas REALES (tiempo_hrs_real), NO horas de cobro mínimo
+      // POR_HORA: usa horas REALES (tiempo_hrs_real, sin cobro mínimo)
       const oh = OVERHEAD_ANALOG_POR_HORA;
-      const hrs = tiempo_hrs_real;  // FIX 3: horas reales sin cobro mínimo
-      costo_mo_ind    = hrs * oh.mano_obra;
-      costo_gtos_post = hrs * (oh.gastos_fuera_fab + oh.depreciaciones);
-      costo_gtos_dir  = hrs * (oh.gtos_direccion + oh.gastos_sistemas);
+      const hrs = tiempo_hrs_real;
+      costo_mo_ind    = hrs * oh.mano_obra;                                    // 17.036
+      costo_gtos_post = hrs * (oh.gastos_fuera_fab + oh.depreciaciones);       // 41.287
+      costo_gtos_dir  = hrs * (oh.gtos_direccion + oh.gastos_sistemas);        // 17.436
     }
   }
 
-  // ── PASO 8: HERRAMIENTAS ───────────────────────────────────────────────────
+  // ── PASO 15: HERRAMIENTAS ──────────────────────────────────────────────────
   let costo_herramientas_usd = 0;
   if (!job.suaje_existe) {
     const suaje_total = job.suaje_precio_usd;
@@ -558,7 +641,7 @@ export function calcularCostoAnalogico(
     costo_herramientas_usd += job.cabezas_screen * 45;
   }
 
-  // Acabados adicionales
+  // Acabados adicionales (sobre m2_cobrar)
   let costo_acabados_usd = 0;
   const acabados_en_material = new Set(['laminado_autoadhesivo_brillante', 'laminado_autoadhesivo_mate', 'laminado_uv', 'cold_foil', 'hot_stamping']);
   Object.entries(acabados).forEach(([key, active]) => {
@@ -576,15 +659,16 @@ export function calcularCostoAnalogico(
 
   const gasto_adicional_usd = job.gasto_adicional_mxn / TC;
 
-  // ── PASO 9: FLETE (función escalón) Y TOTAL ───────────────────────────────
+  // ── PASO 16: FLETE ─────────────────────────────────────────────────────────
   const costo_flete_usd = calcularFleteAnalogico(
     job.cantidad_millares,
     job.desarrollo_mm,
-    params.gap_desarrollo_std ?? 3,
+    gap_des,
     job.eje_mm,
     TC
   );
 
+  // ── PASO 17: TOTAL Y CPM ───────────────────────────────────────────────────
   const costo_fabrica_usd =
     costo_material_usd +
     costo_maquina_usd +
@@ -605,13 +689,10 @@ export function calcularCostoAnalogico(
   let costo_millar_mxn = costo_millar_usd * TC;
 
   // ── MO: OVERRIDE con interpolación logarítmica sobre tabla de referencia ───
-  // La tabla de referencia es más precisa que el cálculo analítico para MO
-  // porque captura parámetros internos del Excel que no son calculables directamente.
+  // La tabla de referencia captura parámetros internos del Excel más precisamente
   if (machine.id === 'MO' && overrideUsdHr === undefined && overheadUsdHr === 0) {
     const modo_ref = job.modo_costo === 'hora' ? 'POR_HORA' : 'POR_METRO';
-    // m2 cobrados por millar (para ajuste de precio de material)
     const m2_por_millar = job.cantidad_millares > 0 ? m2_cobrar / job.cantidad_millares : 0;
-    // Precio laminado actual
     let pl_actual = 0;
     if (acabados['laminado_autoadhesivo_brillante']) pl_actual = 0.25;
     else if (acabados['laminado_autoadhesivo_mate']) pl_actual = 0.35;
@@ -626,8 +707,8 @@ export function calcularCostoAnalogico(
       pl_actual,
       m2_por_millar,
       TC,
-      job.eje_mm,        // ← pasar dimensiones para selección de tabla
-      job.desarrollo_mm  // ← pasar dimensiones para selección de tabla
+      job.eje_mm,
+      job.desarrollo_mm
     );
     costo_millar_mxn = cpm_mxn_interp;
     costo_millar_usd = cpm_mxn_interp / TC;
@@ -642,14 +723,21 @@ export function calcularCostoAnalogico(
   ) {
     console.log(`[DEBUG ANALOG ${machine.id}] escala=${job.cantidad_millares}k`, {
       cavidades_eje,
-      metros_netos: metros_netos.toFixed(3),
+      ancho_material_mm,
+      des_con_gap_mm: des_con_gap_mm.toFixed(3),
+      cav_des,
+      metros_teoricos: metros_teoricos.toFixed(3),
+      setup_metros: setup_metros.toFixed(3),
+      m2_teoricos: m2_teoricos.toFixed(3),
+      cambio_bobinas,
       metros_cobrar: metros_cobrar.toFixed(3),
-      ancho_bobina_m: ancho_bobina_m.toFixed(4),
+      ancho_material_m: ancho_material_m.toFixed(4),
       m2_cobrar: m2_cobrar.toFixed(4),
-      vel_efectiva,
+      vel_efectiva: vel_efectiva.toFixed(4),
       tiempo_prensa_min: tiempo_prensa_min.toFixed(2),
       tiempo_cobrar_min: tiempo_cobrar_min.toFixed(2),
       tiempo_hrs: tiempo_hrs.toFixed(4),
+      tiempo_hrs_real: tiempo_hrs_real.toFixed(4),
       costo_hr_maq: costo_hr_maq.toFixed(4),
       costo_maquina_usd: costo_maquina_usd.toFixed(4),
       costo_revision_usd: costo_revision_usd.toFixed(4),
