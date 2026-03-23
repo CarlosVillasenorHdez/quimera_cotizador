@@ -592,9 +592,16 @@ export function calcularCostoDigital(
 
   const modo = job.modo_costo === 'hora' ? 'POR_HORA' : 'POR_METRO';
 
-  if (overrideUsdHr !== undefined || overheadUsdHr > 0) {
-    costo_gtos_grales_usd = 0;
-    costo_gtos_direccion_usd = 0;
+  if (overrideUsdHr !== undefined) {
+    // Override total: apply override rate over real hours for POR_HORA, m2_netos for POR_METRO
+    if (modo === 'POR_METRO') {
+      const oh = GLOBAL.overhead_digital_por_m2;
+      costo_gtos_grales_usd = m2_netos * (oh.gastos_grales + oh.depreciaciones + oh.gastos_sistemas);
+      costo_gtos_direccion_usd = m2_netos * oh.gtos_direccion;
+    } else {
+      costo_gtos_grales_usd = 0;
+      costo_gtos_direccion_usd = 0;
+    }
   } else if (modo === 'POR_METRO') {
     const oh = GLOBAL.overhead_digital_por_m2;
     // GTOS GRALES+SISTEMAS (row L62) = m2_netos * (gastos_grales + depreciaciones + gastos_sistemas) = 6000 * 0.319 = $1915.20 ✓
@@ -643,11 +650,22 @@ export function calcularCostoDigital(
   // En modo POR_METRO: MO overhead = m2_netos * 0.119 (separado de CEI)
   // Para el total final, sumamos: sustrato + clicks + acabados + HP + CEI + omega + MO_overhead + gtos_gral + gtos_dir + envios
   let costo_mo_overhead_usd = 0;
-  if (overrideUsdHr === undefined && overheadUsdHr === 0) {
-    if (modo === 'POR_METRO') {
-      costo_mo_overhead_usd = m2_netos * GLOBAL.overhead_digital_por_m2.mano_obra;  // 0.119
+  if (overrideUsdHr !== undefined) {
+    // Override mode: apply override rate over real hours
+    costo_mo_overhead_usd = horas_impresion_reales * overrideUsdHr;
+  } else if (modo === 'POR_METRO') {
+    costo_mo_overhead_usd = m2_netos * GLOBAL.overhead_digital_por_m2.mano_obra;  // 0.119
+  } else {
+    // POR_HORA: MO overhead calculado dinámicamente según n_maquinas_digitales
+    // If overheadUsdHr provided from parameters table, use it as total overhead (replaces built-in)
+    if (overheadUsdHr > 0) {
+      // overheadUsdHr is the total fee/hr from parameters table (all concepts combined)
+      // Apply it over real hours — this replaces the individual concept calculations
+      costo_mo_overhead_usd = horas_impresion_reales * overheadUsdHr;
+      // Zero out the separately computed gtos_grales and gtos_direccion to avoid double-counting
+      costo_gtos_grales_usd = 0;
+      costo_gtos_direccion_usd = 0;
     } else {
-      // POR_HORA: MO overhead calculado dinámicamente según n_maquinas_digitales
       const n_maq_dig = params.n_maquinas_digitales ?? 14;
       const horas_mes = (params.dias_mes ?? 20) * (params.horas_dia ?? 12) * (params.eficiencia ?? 0.85);
       const fee_hr_mo = 81090 * 0.70 / horas_mes / n_maq_dig;
