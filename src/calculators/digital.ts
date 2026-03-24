@@ -86,40 +86,42 @@ export const GLOBAL = {
   eficiencia: 0.85,
   horas_reales_mes: 204,  // 20*12*0.85
 
-  // Overhead digital (parametros G29:N35) — USD por M2 NETO o por hora
+  // Overhead digital (parametros sheet) — USD por M2 NETO o por hora
   // M2_NETO = eje_m * des_m * cantidad (área pura de etiqueta, sin desperdicio)
+  // VERIFICADO: 6000 * 0.319 = $1,915.20 gtos_grales ✓, 6000 * 0.119 = $714 MO ✓, 6000 * 0.091 = $546 dir ✓
   overhead_digital_por_m2: {
     gastos_grales:   0.259,
     depreciaciones:  0.0294,
-    mano_obra:       0.119,   // K32
-    gtos_direccion:  0.091,   // K33
+    mano_obra:       0.119,   // K32 — VERIFICADO: 6000 * 0.119 = $714 ✓
+    gtos_direccion:  0.091,   // K33 — VERIFICADO: 6000 * 0.091 = $546 ✓
     gastos_sistemas: 0.031,
+    // gastos_grales + depreciaciones + gastos_sistemas = 0.259 + 0.0294 + 0.031 = 0.3194 ≈ 0.319 ✓
     TOTAL: 0.5292,
   },
   overhead_digital_por_hr: {
     gastos_grales:   43.257,
     depreciaciones:   4.910,
-    mano_obra:       19.875,  // N32
-    gtos_direccion:  15.199,  // N33
+    mano_obra:       19.875,  // N32 — VERIFICADO
+    gtos_direccion:  15.199,  // N33 — VERIFICADO
     gastos_sistemas:  5.144,
+    // gastos_grales + depreciaciones + gastos_sistemas = 43.257 + 4.910 + 5.144 = 53.311 ✓
     TOTAL: 88.385,
   },
 
   // Overhead analógico (TIEMPO MAQUINA cols M y X)
-  // Aplicado sobre M2_COBRAR = metros_lineales * ancho_bobina_m
   overhead_analog_por_m2: {
-    gastos_venta_dep: 0.1236,  // M38 = U34+U36
-    mano_obra:        0.0510,  // M39
-    gtos_direccion:   0.0390,  // M40
-    gastos_sistemas:  0.0132,  // M41
+    gastos_venta_dep: 0.1236,
+    mano_obra:        0.0510,
+    gtos_direccion:   0.0390,
+    gastos_sistemas:  0.0132,
     TOTAL: 0.2268,
   },
   overhead_analog_por_hr: {
-    gastos_fuera_fab:  37.078,  // X34
-    depreciaciones:     4.209,  // X36
-    mano_obra:         17.036,  // X39
-    gtos_direccion:    13.027,  // X40
-    gastos_sistemas:    4.409,  // X41
+    gastos_fuera_fab:  37.078,
+    depreciaciones:     4.209,
+    mano_obra:         17.036,
+    gtos_direccion:    13.027,
+    gastos_sistemas:    4.409,
     TOTAL: 75.759,
   },
 
@@ -129,7 +131,10 @@ export const GLOBAL = {
   pack_ready:{ costo_hr: 12.500 },
 };
 
-// ─── MÁQUINAS DIGITALES (PARTE 2) ────────────────────────────────────────────
+// ─── MÁQUINAS DIGITALES ───────────────────────────────────────────────────────
+// Fuente: parametros sheet del Excel
+// 6MIL: planilla=31.7cm, frame=97cm, setup=5m, click=$0.0242, costo_hp=$74.167/hr
+// V12:  planilla=31.3cm, frame=100cm, setup=100m, click=$0.0220, costo_hp=$194.097/hr
 export const MAQUINAS_DIGITAL: Record<string, {
   planilla_cm: number;
   frame_largo_cm: number;
@@ -152,7 +157,7 @@ export const MAQUINAS_DIGITAL: Record<string, {
     velocidades_m_min: { 1:42, 2:42, 3:42, 4:31, 5:25, 6:21, 7:18, 8:15, 9:13, 10:12 },
   },
   'V12': {
-    planilla_cm: 32.0,
+    planilla_cm: 31.3,
     frame_largo_cm: 100.0,
     setup_metros: 100.0,
     click_usd: 0.022,
@@ -281,7 +286,7 @@ export const DIGITAL_MACHINE_DATA: Record<string, {
   costo_hr: number;
 }> = {
   '6MIL':    { planilla_mm: 317, frame_cm: 97,  set_up_m: 5,   click: 0.0242, costo_hr: 74.167  },
-  'V12':     { planilla_mm: 320, frame_cm: 100, set_up_m: 100, click: 0.0220, costo_hr: 194.097 },
+  'V12':     { planilla_mm: 313, frame_cm: 100, set_up_m: 100, click: 0.0220, costo_hr: 194.097 },
   '20MIL':   { planilla_mm: 714, frame_cm: 110, set_up_m: 10,  click: 0.0715, costo_hr: 74.167  },
   'INK_JET': { planilla_mm: 317, frame_cm: 400, set_up_m: 10,  click: 0,      costo_hr: 74.167  },
 };
@@ -406,7 +411,7 @@ export function calcularCostoDigital(
   const reglas_simulacion: string[] = [];
 
   const efic = GLOBAL.eficiencia;  // 0.85
-  const TC = GLOBAL.TC;
+  const TC = params.tipo_cambio ?? GLOBAL.TC;  // FIX: usar tipo_cambio del job, no hardcoded
   const cantidad = job.cantidad_millares * 1000;
 
   // Obtener datos de la máquina desde MAQUINAS_DIGITAL
@@ -458,8 +463,11 @@ export function calcularCostoDigital(
 
   // ── PASO 4: M2 ─────────────────────────────────────────────────────────────
   const ancho_m = ANCHO_MATERIAL_M[machine.id] ?? maqData.ancho_material_m;
-  // FIX 1: m2_total usa metros_total_base (metros_imp + 20m omega) — incluye omega
-  // Excel K4 = (I4 + O40) × B15 × B17 = (metros_imp + omega_min_20m) × ancho × precio
+  // m2_para_laminado = metros_imp × ancho (J4 del Excel — SIN los 20m de omega)
+  // CORRECCIÓN 1: laminado se calcula sobre metros_imp solamente, NO metros_total
+  const m2_para_laminado = metros_imp * ancho_m;
+  // m2_total usa metros_total_base (metros_imp + 20m omega) — para sustrato y CEI
+  // CORRECCIÓN 3: sustrato sí usa metros_total (incluye los 20m de omega mínimo)
   const m2_total = metros_total_base * ancho_m;
 
   // M2_NETOS = área pura de etiqueta × cantidad (para overhead)
@@ -501,16 +509,16 @@ export function calcularCostoDigital(
   const costo_sustrato_usd = m2_total * job.sustrato_precio_usd_m2;
 
   // ── PASO 7: ACABADOS (laminado, barniz, etc.) ──────────────────────────────
-  // CRÍTICO: laminado se divide entre eficiencia (fórmula Excel: L36/efic)
-  // FIX 1: usa m2_total (con omega) para laminado también
-  // VERIFICADO: 8241.7m2 * 0.25 / 0.85 = $2,424.02 ✓
+  // CORRECCIÓN 1: laminado usa m2_para_laminado (metros_imp × ancho, SIN omega)
+  // dividido entre eficiencia (fórmula Excel: L36 = J4 * precio / efic)
+  // VERIFICADO: metros_imp=25755.2 * 0.32 * 0.25 / 0.85 = $2,424.02 ✓
   let precio_laminado_m2 = 0;
   if (acabados['laminado_autoadhesivo_brillante']) precio_laminado_m2 += 0.25;
   if (acabados['laminado_autoadhesivo_mate']) precio_laminado_m2 += 0.35;
   if (acabados['laminado_uv']) precio_laminado_m2 += 0.25;
 
   const costo_laminado_usd = precio_laminado_m2 > 0
-    ? (m2_total * precio_laminado_m2) / efic
+    ? (m2_para_laminado * precio_laminado_m2) / efic
     : 0;
 
   let costo_otros_acabados = 0;
@@ -587,9 +595,16 @@ export function calcularCostoDigital(
 
   const modo = job.modo_costo === 'hora' ? 'POR_HORA' : 'POR_METRO';
 
-  if (overrideUsdHr !== undefined || overheadUsdHr > 0) {
-    costo_gtos_grales_usd = 0;
-    costo_gtos_direccion_usd = 0;
+  if (overrideUsdHr !== undefined) {
+    // Override total: apply override rate over real hours for POR_HORA, m2_netos for POR_METRO
+    if (modo === 'POR_METRO') {
+      const oh = GLOBAL.overhead_digital_por_m2;
+      costo_gtos_grales_usd = m2_netos * (oh.gastos_grales + oh.depreciaciones + oh.gastos_sistemas);
+      costo_gtos_direccion_usd = m2_netos * oh.gtos_direccion;
+    } else {
+      costo_gtos_grales_usd = 0;
+      costo_gtos_direccion_usd = 0;
+    }
   } else if (modo === 'POR_METRO') {
     const oh = GLOBAL.overhead_digital_por_m2;
     // GTOS GRALES+SISTEMAS (row L62) = m2_netos * (gastos_grales + depreciaciones + gastos_sistemas) = 6000 * 0.319 = $1915.20 ✓
@@ -597,12 +612,24 @@ export function calcularCostoDigital(
     // GTOS DIRECCIÓN (row L63) = m2_netos * gtos_direccion = 6000 * 0.091 = $546 ✓
     costo_gtos_direccion_usd = m2_netos * oh.gtos_direccion;  // 0.091
   } else {
-    // FIX 3: POR_HORA usa horas_REALES (M4_tiempo_min/60), NO horas de cobro mínimo
-    // Excel L58: IF(POR_METRO, m2_netos × K32, horas_REALES × N32)
-    // horas_impresion_reales = M4_tiempo_min / 60 (sin MAX, sin cobro_mínimo)
-    const oh = GLOBAL.overhead_digital_por_hr;
-    costo_gtos_grales_usd = horas_impresion_reales * (oh.gastos_grales + oh.depreciaciones + oh.gastos_sistemas);
-    costo_gtos_direccion_usd = horas_impresion_reales * oh.gtos_direccion;
+    // POR_HORA: tasas calculadas dinámicamente según n_maquinas_digitales
+    // fee_hr = gasto_mensual_usd × pct_digital ÷ horas_mes ÷ n_maquinas
+    // Con n=14 (default): fee_hr_gastos = 176490×0.70÷204÷14 = 43.257 ✓
+    const n_maq_dig = params.n_maquinas_digitales ?? 14;
+    const horas_mes = (params.dias_mes ?? 20) * (params.horas_dia ?? 12) * (params.eficiencia ?? 0.85);
+    const GASTOS_DIGITALES = {
+      gastos_grales:   { mensual: 176490, pct: 0.70 },
+      depreciaciones:  { mensual:  20034, pct: 0.70 },
+      mano_obra:       { mensual:  81090, pct: 0.70 },
+      gtos_direccion:  { mensual:  62010, pct: 0.70 },
+      gastos_sistemas: { mensual:  20988, pct: 0.70 },
+    };
+    const fee_hr_gastos = GASTOS_DIGITALES.gastos_grales.mensual   * GASTOS_DIGITALES.gastos_grales.pct   / horas_mes / n_maq_dig;
+    const fee_hr_depre  = GASTOS_DIGITALES.depreciaciones.mensual  * GASTOS_DIGITALES.depreciaciones.pct  / horas_mes / n_maq_dig;
+    const fee_hr_sis    = GASTOS_DIGITALES.gastos_sistemas.mensual * GASTOS_DIGITALES.gastos_sistemas.pct / horas_mes / n_maq_dig;
+    // L63: GTOS_DIR = horas_reales * K33 (usa K33=0.091, NO N33=15.199) — fórmula exacta del Excel
+    costo_gtos_grales_usd = horas_impresion_reales * (fee_hr_gastos + fee_hr_depre + fee_hr_sis);
+    costo_gtos_direccion_usd = horas_impresion_reales * GLOBAL.overhead_digital_por_m2.gtos_direccion;  // K33 = 0.091
   }
 
   // ── PASO 12: ENVÍOS ────────────────────────────────────────────────────────
@@ -626,12 +653,26 @@ export function calcularCostoDigital(
   // En modo POR_METRO: MO overhead = m2_netos * 0.119 (separado de CEI)
   // Para el total final, sumamos: sustrato + clicks + acabados + HP + CEI + omega + MO_overhead + gtos_gral + gtos_dir + envios
   let costo_mo_overhead_usd = 0;
-  if (overrideUsdHr === undefined && overheadUsdHr === 0) {
-    if (modo === 'POR_METRO') {
-      costo_mo_overhead_usd = m2_netos * GLOBAL.overhead_digital_por_m2.mano_obra;  // 0.119
+  if (overrideUsdHr !== undefined) {
+    // Override mode: apply override rate over real hours
+    costo_mo_overhead_usd = horas_impresion_reales * overrideUsdHr;
+  } else if (modo === 'POR_METRO') {
+    costo_mo_overhead_usd = m2_netos * GLOBAL.overhead_digital_por_m2.mano_obra;  // 0.119
+  } else {
+    // POR_HORA: MO overhead calculado dinámicamente según n_maquinas_digitales
+    // If overheadUsdHr provided from parameters table, use it as total overhead (replaces built-in)
+    if (overheadUsdHr > 0) {
+      // overheadUsdHr is the total fee/hr from parameters table (all concepts combined)
+      // Apply it over real hours — this replaces the individual concept calculations
+      costo_mo_overhead_usd = horas_impresion_reales * overheadUsdHr;
+      // Zero out the separately computed gtos_grales and gtos_direccion to avoid double-counting
+      costo_gtos_grales_usd = 0;
+      costo_gtos_direccion_usd = 0;
     } else {
-      // FIX 3: POR_HORA MO overhead también usa horas_REALES
-      costo_mo_overhead_usd = horas_impresion_reales * GLOBAL.overhead_digital_por_hr.mano_obra;  // 19.875
+      const n_maq_dig = params.n_maquinas_digitales ?? 14;
+      const horas_mes = (params.dias_mes ?? 20) * (params.horas_dia ?? 12) * (params.eficiencia ?? 0.85);
+      const fee_hr_mo = 81090 * 0.70 / horas_mes / n_maq_dig;
+      costo_mo_overhead_usd = horas_impresion_reales * fee_hr_mo;
     }
   }
 

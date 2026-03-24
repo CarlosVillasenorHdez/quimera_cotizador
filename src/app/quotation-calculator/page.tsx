@@ -15,6 +15,7 @@ import CurvesChart from './components/CurvesChart';
 import OverheadPanel, { OverheadState, defaultOverheadState, MachineOverride } from './components/OverheadPanel';
 import ParametersTab, { ParametersState, defaultParametersState } from './components/ParametersTab';
 import AlgoritmoTab from './components/AlgoritmoTab';
+import ModoComparisonPanel from '../../components/ui/ModoComparisonPanel';
 
 import { ANALOG_MACHINES, DIGITAL_MACHINES, DEFAULT_GLOBAL_PARAMS, GlobalParams } from '../../config/machines';
 import { calcularCostoAnalogico, AnalogCostResult } from '../../calculators/analogico';
@@ -231,6 +232,104 @@ export default function QuotationCalculatorPage() {
       return [...analogResults, ...digitalResults];
     },
     [datosComunes, acabados, acabadosMap, paramsAnalogico, paramsDigital, effectiveGlobalParams, rules, modoCosto, getMachineOverhead, machineParameters]
+  );
+
+  // Función auxiliar para comparar modos — siempre recalcula con el modo forzado
+  const computeForScaleConModo = useCallback(
+    (scale: number, modoForzado: 'hora' | 'metro'): CostResult[] => {
+      const params = effectiveGlobalParams;
+
+      const analogResults: AnalogCostResult[] = ANALOG_MACHINES.map((machine) => {
+        const { overheadHr, overrideHr } = getMachineOverhead(machine.id, 'analog');
+        const machineP = machineParameters.analogMachines.find(m => m.id === machine.id);
+        return calcularCostoAnalogico(
+          machine,
+          {
+            eje_mm: datosComunes.eje_mm,
+            desarrollo_mm: datosComunes.desarrollo_mm,
+            cantidad_millares: scale,
+            sustrato_precio_usd_m2: datosComunes.sustrato_precio_usd_m2,
+            ancho_material_mm: paramsAnalogico.ancho_material_mm,
+            colores_offset: paramsAnalogico.colores_offset,
+            cabezas_flexo: paramsAnalogico.cabezas_flexo,
+            cabezas_screen: paramsAnalogico.cabezas_screen,
+            mallas_cobradas_fuera: paramsAnalogico.mallas_cobradas_fuera,
+            suaje_existe: paramsAnalogico.suaje_existe,
+            suaje_precio_usd: paramsAnalogico.suaje_precio_usd,
+            suaje_prorratear: paramsAnalogico.suaje_prorratear,
+            suaje_entradas: paramsAnalogico.suaje_entradas,
+            herramienta_existe: paramsAnalogico.herramienta_existe,
+            herramienta_precio_usd: paramsAnalogico.herramienta_precio_usd,
+            herramienta_prorratear: paramsAnalogico.herramienta_prorratear,
+            herramienta_entradas: paramsAnalogico.herramienta_entradas,
+            desperdicio_pct: paramsAnalogico.desperdicio_pct,
+            gasto_adicional_mxn: paramsAnalogico.gasto_adicional_mxn,
+            necesita_cupon: acabados.cupon,
+            necesita_cold_foil: acabados.cold_foil,
+            necesita_hot_stamping: acabados.hot_stamping || acabados.hs_embossing,
+            necesita_embossing: acabados.embossing || acabados.hs_embossing,
+            necesita_screen: paramsAnalogico.cabezas_screen > 0,
+            margen_pct: datosComunes.margen_pct,
+            modo_costo: modoForzado,
+            tamanio_bobina_m: datosComunes.tamanio_bobina_m,
+          },
+          params,
+          rules,
+          acabadosMap,
+          overheadHr,
+          overrideHr,
+          machineP
+        );
+      });
+
+      const digitalResults: DigitalCostResult[] = DIGITAL_MACHINES.map((machine) => {
+        const { overheadHr, overrideHr } = getMachineOverhead(machine.id, 'digital');
+        const machineP = machineParameters.digitalMachines.find(m => m.id === machine.id);
+        return calcularCostoDigital(
+          machine,
+          {
+            eje_mm: datosComunes.eje_mm,
+            desarrollo_mm: datosComunes.desarrollo_mm,
+            cantidad_millares: scale,
+            sustrato_precio_usd_m2: datosComunes.sustrato_precio_usd_m2,
+            ancho_material_mm: paramsDigital.ancho_material_mm,
+            ancho_material_20mil_mm: paramsDigital.ancho_material_20mil_mm,
+            num_tintas: paramsDigital.num_tintas,
+            cama_blanco: paramsDigital.cama_blanco,
+            blanco_cobertura_pct: paramsDigital.blanco_cobertura_pct,
+            blanco_num_camas: paramsDigital.blanco_num_camas,
+            tinta_plata: paramsDigital.tinta_plata,
+            plata_cobertura_pct: paramsDigital.plata_cobertura_pct,
+            plata_num_camas: paramsDigital.plata_num_camas,
+            tinta_invisible: paramsDigital.tinta_invisible,
+            tinta_pink: paramsDigital.tinta_pink,
+            tinta_raised: paramsDigital.tinta_raised,
+            usa_primer_extra: paramsDigital.usa_primer_extra,
+            pasos_omega: paramsDigital.pasos_omega,
+            pasos_estampador: paramsDigital.pasos_estampador,
+            pasos_jtfix: paramsDigital.pasos_jtfix,
+            reinsercion_digital: paramsDigital.reinsercion_digital,
+            flete_externo: paramsDigital.flete_externo,
+            flete_monto_mxn: paramsDigital.flete_monto_mxn,
+            margen_pct: datosComunes.margen_pct,
+            modo_costo: modoForzado,
+            desperdicio_pct: paramsDigital.desperdicio_pct,
+          },
+          params,
+          rules,
+          acabadosMap,
+          overheadHr,
+          overrideHr,
+          machineP,
+          machineParameters.speedTable,
+          machineParameters.clickValues
+        );
+      });
+
+      return [...analogResults, ...digitalResults];
+    },
+    // NOTE: NO incluir modoCosto — este siempre usa el parámetro modoForzado
+    [datosComunes, acabados, acabadosMap, paramsAnalogico, paramsDigital, effectiveGlobalParams, rules, getMachineOverhead, machineParameters]
   );
 
   const runCalculations = useCallback(() => {
@@ -542,6 +641,14 @@ export default function QuotationCalculatorPage() {
                 globalParams={effectiveGlobalParams}
                 scales={datosComunes.escalas}
                 computeForScale={computeResultsForScale}
+              />
+
+              {/* Modo Comparison Panel */}
+              <ModoComparisonPanel
+                scales={datosComunes.escalas}
+                computeForScale={computeResultsForScale}
+                computeForScaleConModo={computeForScaleConModo}
+                modoCostoActual={modoCosto}
               />
             </div>
 
