@@ -170,10 +170,29 @@ export const TEST_REFS_MO_500K = {
 
 /** Paso del diente en mm (1/8 pulgada exacto). */
 const PASO_DIENTE_MM = 3.175;
-/** Gap mínimo aceptable entre etiquetas en mm. */
+/** Gap mínimo aceptable entre etiquetas en mm (igual para todas las máquinas). */
 const GAP_DES_MIN = 2.5;
-/** Gap máximo aceptable entre etiquetas en mm. */
-const GAP_DES_MAX = 6.0;
+
+/**
+ * Gap MÁXIMO aceptable por máquina, en mm.
+ * Fuente: CALCULADOR DE LOS DIENTES col F (GAP MAX) por sección:
+ *   MO   → row 1,   F1  = 6
+ *   FA10 → row 12,  F12 = 6
+ *   FA6  → row 121, F121 = 16   ← MÁS PERMISIVO (permite gaps grandes en des grandes)
+ *   GAL1 → row 230, F230 = 13
+ *
+ * Este parámetro es la causa del bug reportado: con des=200mm, FA6 y GAL1 tienen
+ * gap=6.375mm que supera el límite de 6.0 usado antes → se marcaban NO DISPONIBLE.
+ * Con los valores correctos del Excel:
+ *   FA6  d=130: gap=6.375 ≤ 16  → DISPONIBLE ✓
+ *   GAL1 d=65:  gap=6.375 ≤ 13  → DISPONIBLE ✓
+ */
+const GAP_DES_MAX: Record<string, number> = {
+  MO:   6.0,
+  FA10: 6.0,
+  FA6:  16.0,
+  GAL1: 13.0,
+};
 
 /**
  * Inventarios de cilindros por máquina.
@@ -237,10 +256,18 @@ export interface CylinderResult {
  * Selecciona el cilindro óptimo para una máquina y desarrollo dados.
  *
  * Replica exactamente la lógica de:
- *   P2 = VLOOKUP(MIN(A4:A10), A4:H10, 3, FALSE)   [MO]
- *   P13 = VLOOKUP(MIN(A15:A119), A15:H119, 3, FALSE) [FA10]
- * donde col A = gap_real (solo para cilindros DISPONIBLES)
- * y se selecciona el MÍNIMO gap.
+ *   P2  = VLOOKUP(MIN(L4:L10),   A4:K10,   3) [MO  — col L = gaps de DISPONIBLES]
+ *   P123 = VLOOKUP(MIN(L124:L228), ...,     3) [FA6 — ídem]
+ * donde se elige el mínimo gap entre cilindros con qty > 0 dentro del rango de gap.
+ *
+ * CORRECCIÓN vs versión anterior: cada máquina tiene su propio GAP_MAX.
+ *   MO / FA10: gap_max = 6.0mm  (F1=6, F12=6 en CALCULADOR)
+ *   FA6:       gap_max = 16.0mm (F121=16 en CALCULADOR)
+ *   GAL1:      gap_max = 13.0mm (F230=13 en CALCULADOR)
+ *
+ * Sin esto, con desarrollo=200mm FA6 y GAL1 muestran NO DISPONIBLE incorrectamente:
+ *   FA6  d=130: gap=6.375 > 6.0 (viejo) → rechazado ✗  |  6.375 ≤ 16.0 (correcto) → DISPONIBLE ✓
+ *   GAL1 d=65:  gap=6.375 > 6.0 (viejo) → rechazado ✗  |  6.375 ≤ 13.0 (correcto) → DISPONIBLE ✓
  *
  * @param machineId  - 'MO' | 'FA10' | 'FA6' | 'GAL1'
  * @param desarrollo - Dimensión de desarrollo de la etiqueta en mm
@@ -253,6 +280,9 @@ export function seleccionarCilindroOptimo(
   const inventory = CYLINDER_INVENTORY[machineId];
   if (!inventory) return null;
 
+  // Usar GAP_MAX específico de la máquina (crítico para FA6 y GAL1)
+  const gapMax = GAP_DES_MAX[machineId] ?? 6.0;
+
   let bestGap = Infinity;
   let bestDientes: number | null = null;
   let bestCav: number | null = null;
@@ -263,8 +293,8 @@ export function seleccionarCilindroOptimo(
 
     const des_max = dientes * PASO_DIENTE_MM;
 
-    // cav_teo = des_max / (desarrollo + GAP_MIN)
-    // El divisor garantiza: gap resultante = des_max/cav_int - desarrollo ≥ gap_min
+    // cav_teo = FLOOR(des_max / (desarrollo + GAP_MIN))
+    // El divisor garantiza: gap resultante ≥ GAP_MIN (= 2.5mm)
     const cav_teo = des_max / (desarrollo + GAP_DES_MIN);
     const cav_int = Math.floor(cav_teo);
     if (cav_int < 1) continue;
@@ -272,10 +302,10 @@ export function seleccionarCilindroOptimo(
     // gap_real = des_max/cav_int − desarrollo
     const gap = des_max / cav_int - desarrollo;
 
-    // Filtrar por rango de gap válido
-    if (gap < GAP_DES_MIN || gap > GAP_DES_MAX) continue;
+    // Filtrar por rango de gap válido ESPECÍFICO DE LA MÁQUINA
+    if (gap < GAP_DES_MIN || gap > gapMax) continue;
 
-    // Seleccionar cilindro con mínimo gap
+    // Seleccionar cilindro con mínimo gap (= óptimo)
     if (gap < bestGap) {
       bestGap = gap;
       bestDientes = dientes;
@@ -500,7 +530,7 @@ export function calcularElegibilidadAnalogica(
   }
 
   if (rules.entra_desarrollo && pts_desarrollo === 0) {
-    razones_falla.push(`Desarrollo ${job.desarrollo_mm}mm: no hay cilindro disponible con gap ${GAP_DES_MIN}–${GAP_DES_MAX}mm`);
+    razones_falla.push(`Desarrollo ${job.desarrollo_mm}mm: no hay cilindro disponible (gap mín ${GAP_DES_MIN}mm, máx ${GAP_DES_MAX[machine.id] ?? 6}mm)`);
   } else if (!rules.entra_desarrollo && pts_desarrollo === 0) {
     reglas_simulacion.push('Entra al desarrollo (simulación)');
   }
