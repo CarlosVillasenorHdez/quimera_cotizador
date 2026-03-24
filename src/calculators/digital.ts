@@ -194,22 +194,35 @@ export let MODO_OVERHEAD: 'POR_METRO' | 'POR_HORA' = 'POR_METRO';
 
 // ─── VALORES DE REFERENCIA PARA VALIDACIÓN (PARTE 6) ─────────────────────────
 // Etiqueta: eje=120mm, des=100mm, mat=$1.20, laminado brillante, 4 tintas, 1 Omega, 500k, POR_METRO
+// FUENTE: hoja "6 MIL" del Excel (quimera_por_hora.xlsm), cantidades celda por celda.
+//
+// NOTA sobre laminado:
+//   Excel L36 = J4 × K36 = 8241.67 × 0.25 = $2,060.42  (SIN /efic)
+//   La versión anterior usaba /efic → $2,424.02 (INCORRECTO).
+//
+// NOTA sobre overhead POR_METRO:
+//   Aplicado sobre m2_netos = eje_m × des_m × cantidad = 0.12 × 0.10 × 500000 = 6000 m²
+//   gg+dep+sis = 6000 × 0.319 = $1,914.0
+//   MO        = 6000 × 0.119 = $714.0
+//   Dir       = 6000 × 0.091 = $546.0
 export const REFS_6MIL_500K = {
   metros_imp: 25755.2,
   clicks: 111112,
   m2_netos: 6000,
   sustrato: 9897.68,
   clicks_cost: 2688.91,
-  acabados: 2424.02,
+  // laminado CORRECTO: J4 * 0.25 = 8241.67 * 0.25 = $2,060.42 (sin /efic)
+  acabados: 2060.42,
   hp: 1358.18,
   mo: 714.00,
   omega: 294.69,
-  gtos_gral: 1915.20,
+  gtos_gral: 1914.00,
   gtos_dir: 546.00,
   envios: 39.82,
-  total: 19905.34,
-  cpm_usd: 39.81,
-  cpm_mxn: 875.82,
+  // total = 9897.68+2060.42+2688.91+1358.18+26.85+294.69+1914.00+714.00+546.00+39.82 = 19540.55
+  total: 19540.55,
+  cpm_usd: 39.08,
+  cpm_mxn: 859.76,
 };
 
 export const REFS_MO_500K = {
@@ -509,17 +522,23 @@ export function calcularCostoDigital(
   const costo_sustrato_usd = m2_total * job.sustrato_precio_usd_m2;
 
   // ── PASO 7: ACABADOS (laminado, barniz, etc.) ──────────────────────────────
-  // CORRECCIÓN 1: laminado usa m2_para_laminado (metros_imp × ancho, SIN omega)
-  // dividido entre eficiencia (fórmula Excel: L36 = J4 * precio / efic)
-  // VERIFICADO: metros_imp=25755.2 * 0.32 * 0.25 / 0.85 = $2,424.02 ✓
+  // Laminado usa m2_para_laminado (= metros_imp × ancho = J4 del Excel), SIN omega.
+  //
+  // CORRECCIÓN vs versión anterior: NO se divide por eficiencia.
+  // Fórmula Excel 6 MIL hoja: L36 = J4 × K36
+  //   donde J4 = metros_imp × ancho = 8241.67 m²  (sin omega)
+  //         K36 = precio_laminado = 0.25 USD/m²
+  //   → L36 = 8241.67 × 0.25 = $2,060.42 ✓
+  //
+  // La versión anterior usaba / efic → $2,424.02, que es INCORRECTO.
+  // La eficiencia ya está capturada en los frames (ROUNDUP de cantidad/cavidades).
   let precio_laminado_m2 = 0;
   if (acabados['laminado_autoadhesivo_brillante']) precio_laminado_m2 += 0.25;
   if (acabados['laminado_autoadhesivo_mate']) precio_laminado_m2 += 0.35;
   if (acabados['laminado_uv']) precio_laminado_m2 += 0.25;
 
-  const costo_laminado_usd = precio_laminado_m2 > 0
-    ? (m2_para_laminado * precio_laminado_m2) / efic
-    : 0;
+  // L36 = J4 * K36 — SIN división por eficiencia
+  const costo_laminado_usd = m2_para_laminado * precio_laminado_m2;
 
   let costo_otros_acabados = 0;
   if (acabados['barniz_brillante_uv']) costo_otros_acabados += m2_total * 0.04;
