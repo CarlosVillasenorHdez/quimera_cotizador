@@ -126,32 +126,20 @@ export default function QuotationCalculatorPage() {
   const getMachineOverhead = useCallback((machineId: string, machineType: 'analog' | 'digital'): { overheadHr: number; overrideHr?: number } => {
     const perM: MachineOverride | undefined = overhead.perMachine[machineId];
 
-    // ── ANALÓGICO ──────────────────────────────────────────────────────────
-    // Para máquinas analógicas retornamos overheadHr=0 siempre.
-    // calcularCostoAnalogico tiene su propio bloque de overhead que lee
-    // job.modo_costo y aplica correctamente POR_METRO (sobre m2_cobrar)
-    // o POR_HORA (sobre tiempo_cobrar_hrs) usando las constantes del Excel.
-    // Si pasamos overheadUsdHr > 0, ese bloque interno queda bloqueado
-    // por la guarda "if (overheadUsdHr === 0)" y el toggle no tiene efecto.
-    if (machineType === 'analog') {
-      if (perM?.useOverride && perM.overrideTotal !== undefined) {
-        return { overheadHr: 0, overrideHr: perM.overrideTotal };
-      }
-      return { overheadHr: 0 };
-    }
-
-    // ── DIGITAL ────────────────────────────────────────────────────────────
-    // Para digital sí pasamos el fee/hr calculado desde overheadConceptos.
-    const baseOverheadFromParams = overheadFeeHrDigital;
-    const globalAdd = overhead.overheadGlobalMode === 'hr' ? overhead.overheadGlobalUsdHr : 0;
-    const indAdd = perM?.overheadIndividual || 0;
-    const totalOverhead = baseOverheadFromParams + globalAdd + indAdd;
-
+    // Tanto analógico como digital retornan overheadHr=0.
+    // Cada calculadora (calcularCostoAnalogico / calcularCostoDigital) tiene su
+    // propio bloque de overhead que aplica las tasas correctas del Excel según
+    // modo_costo (POR_METRO → tasas por m², POR_HORA → tasas por hora).
+    //
+    // Si pasamos overheadUsdHr > 0 a las calculadoras, ese bloque interno queda
+    // bloqueado o produce resultados incorrectos (doble conteo, tasa equivocada).
+    //
+    // El override manual del usuario (perM.useOverride) sigue funcionando igual.
     if (perM?.useOverride && perM.overrideTotal !== undefined) {
       return { overheadHr: 0, overrideHr: perM.overrideTotal };
     }
-    return { overheadHr: totalOverhead };
-  }, [overhead, overheadFeeHrDigital]);
+    return { overheadHr: 0 };
+  }, [overhead]);
 
   const computeResultsForScale = useCallback(
     (scale: number): CostResult[] => {
