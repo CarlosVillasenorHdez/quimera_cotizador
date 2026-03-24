@@ -442,6 +442,10 @@ export const DEFAULT_OVERHEAD_CONCEPTOS: OverheadConcepto[] = [
 ];
 
 export const SUSTRATOS = [
+  { label: 'COUCHE HM', precio_usd_m2: 0.62 },
+  { label: 'COUCHE ACR', precio_usd_m2: 0.65 },
+  { label: 'COUCHE 1096', precio_usd_m2: 0.68 },
+  { label: 'COUCHE/PET', precio_usd_m2: 0.85 },
   { label: 'BOPP Transparente', precio_usd_m2: 0.85 },
   { label: 'BOPP Blanco', precio_usd_m2: 0.92 },
   { label: 'PVC Blanco', precio_usd_m2: 1.1 },
