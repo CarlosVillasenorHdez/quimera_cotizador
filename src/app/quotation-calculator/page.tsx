@@ -125,9 +125,24 @@ export default function QuotationCalculatorPage() {
   // Get effective overhead for a machine
   const getMachineOverhead = useCallback((machineId: string, machineType: 'analog' | 'digital'): { overheadHr: number; overrideHr?: number } => {
     const perM: MachineOverride | undefined = overhead.perMachine[machineId];
-    // Base overhead from parameters table (already prorrateado per machine)
-    const baseOverheadFromParams = machineType === 'digital' ? overheadFeeHrDigital : overheadFeeHrAnalog;
-    // Additional global overhead from OverheadPanel (manual extra, default 0)
+
+    // ── ANALÓGICO ──────────────────────────────────────────────────────────
+    // Para máquinas analógicas retornamos overheadHr=0 siempre.
+    // calcularCostoAnalogico tiene su propio bloque de overhead que lee
+    // job.modo_costo y aplica correctamente POR_METRO (sobre m2_cobrar)
+    // o POR_HORA (sobre tiempo_cobrar_hrs) usando las constantes del Excel.
+    // Si pasamos overheadUsdHr > 0, ese bloque interno queda bloqueado
+    // por la guarda "if (overheadUsdHr === 0)" y el toggle no tiene efecto.
+    if (machineType === 'analog') {
+      if (perM?.useOverride && perM.overrideTotal !== undefined) {
+        return { overheadHr: 0, overrideHr: perM.overrideTotal };
+      }
+      return { overheadHr: 0 };
+    }
+
+    // ── DIGITAL ────────────────────────────────────────────────────────────
+    // Para digital sí pasamos el fee/hr calculado desde overheadConceptos.
+    const baseOverheadFromParams = overheadFeeHrDigital;
     const globalAdd = overhead.overheadGlobalMode === 'hr' ? overhead.overheadGlobalUsdHr : 0;
     const indAdd = perM?.overheadIndividual || 0;
     const totalOverhead = baseOverheadFromParams + globalAdd + indAdd;
@@ -136,7 +151,7 @@ export default function QuotationCalculatorPage() {
       return { overheadHr: 0, overrideHr: perM.overrideTotal };
     }
     return { overheadHr: totalOverhead };
-  }, [overhead, overheadFeeHrDigital, overheadFeeHrAnalog]);
+  }, [overhead, overheadFeeHrDigital]);
 
   const computeResultsForScale = useCallback(
     (scale: number): CostResult[] => {
