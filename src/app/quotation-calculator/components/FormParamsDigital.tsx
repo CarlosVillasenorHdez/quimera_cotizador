@@ -44,7 +44,7 @@ export const defaultParamsDigital: ParamsDigital = {
   ancho_material_mm: 320,
   ancho_material_20mil_mm: 750,
   usa_primer_extra: false,
-  pasos_omega: 0,
+  pasos_omega: 1,
   pasos_estampador: 0,
   pasos_jtfix: 0,
   reinsercion_digital: false,

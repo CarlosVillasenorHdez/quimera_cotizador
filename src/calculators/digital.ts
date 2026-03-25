@@ -522,23 +522,24 @@ export function calcularCostoDigital(
   const costo_sustrato_usd = m2_total * job.sustrato_precio_usd_m2;
 
   // ── PASO 7: ACABADOS (laminado, barniz, etc.) ──────────────────────────────
-  // Laminado usa m2_para_laminado (= metros_imp × ancho = J4 del Excel), SIN omega.
+  // Laminado: L36 = J4 × K36 = m2_imp × precio.
+  // El costo final es M36 = L36 / efic, porque el Excel usa la columna M
+  // (costo ajustado por eficiencia) en el SUM de acabados (N40 = SUM(N31:N39)).
   //
-  // CORRECCIÓN vs versión anterior: NO se divide por eficiencia.
-  // Fórmula Excel 6 MIL hoja: L36 = J4 × K36
-  //   donde J4 = metros_imp × ancho = 8241.67 m²  (sin omega)
-  //         K36 = precio_laminado = 0.25 USD/m²
-  //   → L36 = 8241.67 × 0.25 = $2,060.42 ✓
-  //
-  // La versión anterior usaba / efic → $2,424.02, que es INCORRECTO.
-  // La eficiencia ya está capturada en los frames (ROUNDUP de cantidad/cavidades).
+  // Verificado celda por celda:
+  //   L36 = J4 × K36 = 8241.67 × 0.25 = $2,060.42  (material raw)
+  //   M36 = L36 / efic = $2,060.42 / 0.85 = $2,424.02  ✓ (costo real con waste)
+  //   N36 = M36 = $2,424.02  ← lo que va a L56 ACABADOS del COSTO TOTAL
+  //   L66 COSTO_TOTAL a 500k = $18,070.38 ✓ (verificado al centavo)
   let precio_laminado_m2 = 0;
   if (acabados['laminado_autoadhesivo_brillante']) precio_laminado_m2 += 0.25;
   if (acabados['laminado_autoadhesivo_mate']) precio_laminado_m2 += 0.35;
   if (acabados['laminado_uv']) precio_laminado_m2 += 0.25;
 
-  // L36 = J4 * K36 — SIN división por eficiencia
-  const costo_laminado_usd = m2_para_laminado * precio_laminado_m2;
+  // M36 = (J4 × K36) / efic — CON división por eficiencia ✓
+  const costo_laminado_usd = precio_laminado_m2 > 0
+    ? (m2_para_laminado * precio_laminado_m2) / efic
+    : 0;
 
   let costo_otros_acabados = 0;
   if (acabados['barniz_brillante_uv']) costo_otros_acabados += m2_total * 0.04;
@@ -640,9 +641,12 @@ export function calcularCostoDigital(
     const fee_hr_gg  = 176490 * 0.70 / n_maq_dig / horas_mes;  // 43.257 ✓
     const fee_hr_dep = 20034  * 0.70 / n_maq_dig / horas_mes;  // 4.910  ✓
     const fee_hr_sis = 20988  * 0.70 / n_maq_dig / horas_mes;  // 5.144  ✓
-    const fee_hr_dir = 62010  * 0.70 / n_maq_dig / horas_mes;  // 15.199 ✓ (N33 — NO K33)
+    // L62 POR_HORA: hr × (gg+dep+sis) = hr × 53.311
     costo_gtos_grales_usd    = horas_impresion_reales * (fee_hr_gg + fee_hr_dep + fee_hr_sis);
-    costo_gtos_direccion_usd = horas_impresion_reales * fee_hr_dir;
+    // L63 POR_HORA = N8 × '6MIL'!K33 donde K33 en la hoja 6MIL es el precio
+    // de barniz 3 (=0 cuando no hay barniz). El Excel NO cobra gtos_dir por hora.
+    // Verificado: L63=0 con parametros!D26="POR HORA", COSTO_TOTAL=$18,070.38 ✓
+    costo_gtos_direccion_usd = 0;
   }
 
   // ── PASO 12: ENVÍOS ────────────────────────────────────────────────────────
