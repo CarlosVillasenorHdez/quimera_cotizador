@@ -332,10 +332,12 @@ export interface ClickValueRow {
 }
 
 export const DEFAULT_CLICK_VALUES: ClickValueRow[] = [
-  { machine_id: '6MIL',    machine_name: '6 MIL',   valor_click_base_usd: 0.022, margen_click: 0.15 },
-  { machine_id: 'V12',     machine_name: 'V12',      valor_click_base_usd: 0.023, margen_click: 0.15 },
-  { machine_id: '20MIL',   machine_name: '20 MIL',   valor_click_base_usd: 0.025, margen_click: 0.15 },
-  { machine_id: 'INK_JET', machine_name: 'INK JET',  valor_click_base_usd: 0,     margen_click: 0 },
+  // Valores directos del Excel (6MIL!B3=0.0242, V12!B3=0.022).
+  // margen_click=0 para replicar el Excel al centavo.
+  { machine_id: '6MIL',    machine_name: '6 MIL',   valor_click_base_usd: 0.0242, margen_click: 0 },
+  { machine_id: 'V12',     machine_name: 'V12',      valor_click_base_usd: 0.022,  margen_click: 0 },
+  { machine_id: '20MIL',   machine_name: '20 MIL',   valor_click_base_usd: 0.0715, margen_click: 0 },
+  { machine_id: 'INK_JET', machine_name: 'INK JET',  valor_click_base_usd: 0,      margen_click: 0 },
 ];
 
 // ─── SUSTRATOS DIGITALES ─────────────────────────────────────────────────────
