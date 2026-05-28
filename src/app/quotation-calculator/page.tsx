@@ -463,10 +463,10 @@ export default function QuotationCalculatorPage() {
               </button>
             </div>
             <a
-              href="/rfq-analyzer"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white transition-all ml-1"
+              href="/analisis"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-orange-700/60 text-orange-200 hover:bg-orange-700 hover:text-white transition-all ml-1"
             >
-              RFQ →
+              Análisis RFQ →
             </a>
           </div>
 
