@@ -18,16 +18,6 @@ const nextConfig = {
     minimumCacheTTL: 60,
   },
 
-  async redirects() {
-    return [
-      {
-        source: '/',
-        destination: '/quotation-calculator',
-        permanent: false,
-      },
-    ];
-  },
-
   webpack(config) {
     config.module.rules.push({
       test: /\.(jsx|tsx)$/,
