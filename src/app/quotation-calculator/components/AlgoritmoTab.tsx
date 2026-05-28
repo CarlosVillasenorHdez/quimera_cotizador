@@ -1,13 +1,13 @@
 'use client';
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
-import { calcularCostoDigital, JobInputDigital, DigitalEligibilityRules } from '../../../calculators/digital';
-
+import React, { useState, useMemo } from 'react';
+import { CheckCircle, XCircle, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
+import { DigitalCostResult } from '../../../calculators/digital';
+import { AnalogCostResult, seleccionarCilindroOptimo } from '../../../calculators/analogico';
 import { ParametersState } from './ParametersTab';
-import { DIGITAL_MACHINES, GlobalParams } from '../../../config/machines';
+import { GlobalParams } from '../../../config/machines';
 import { DatosComunes } from './FormDatosComunes';
 
-type CostResult = { machine_id: string; machine_name: string; elegible: boolean; costo_millar_usd: number; [key: string]: unknown };
+type CostResult = DigitalCostResult | AnalogCostResult;
 
 interface Props {
   computeForScale: (scale: number) => CostResult[];
@@ -19,285 +19,436 @@ interface Props {
   globalParams: GlobalParams;
 }
 
-// ─── Parámetros editables del algoritmo ──────────────────────────────────────
-
-interface AlgoParams {
-  // Globales
-  tipo_cambio: number;
-  dias_mes: number;
-  horas_dia: number;
-  eficiencia: number;
-  // Overhead Digital (por M2 neto)
-  oh_dig_gastos_grales: number;
-  oh_dig_depreciaciones: number;
-  oh_dig_mano_obra: number;
-  oh_dig_direccion: number;
-  oh_dig_sistemas: number;
-  oh_dig_hr_gastos_grales: number;
-  oh_dig_hr_depreciaciones: number;
-  oh_dig_hr_mano_obra: number;
-  oh_dig_hr_direccion: number;
-  oh_dig_hr_sistemas: number;
-  // Overhead Analógico (por M2 cobrado)
-  oh_an_gastos_venta: number;
-  oh_an_mano_obra: number;
-  oh_an_direccion: number;
-  oh_an_sistemas: number;
-  oh_an_hr_gastos: number;
-  oh_an_hr_mo: number;
-  oh_an_hr_dir: number;
-  oh_an_hr_sis: number;
+function N(v: number | null | undefined, dec = 4) {
+  if (v == null) return '—';
+  return v.toFixed(dec);
 }
 
-const DEFAULT_ALGO_PARAMS: AlgoParams = {
-  tipo_cambio: 22,
-  dias_mes: 20,
-  horas_dia: 12,
-  eficiencia: 0.85,
-  oh_dig_gastos_grales: 0.259,
-  oh_dig_depreciaciones: 0.0294,
-  oh_dig_mano_obra: 0.119,
-  oh_dig_direccion: 0.091,
-  oh_dig_sistemas: 0.031,
-  oh_dig_hr_gastos_grales: 43.257,
-  oh_dig_hr_depreciaciones: 4.910,
-  oh_dig_hr_mano_obra: 19.875,
-  oh_dig_hr_direccion: 15.199,
-  oh_dig_hr_sistemas: 5.144,
-  oh_an_gastos_venta: 0.1236,
-  oh_an_mano_obra: 0.0510,
-  oh_an_direccion: 0.0390,
-  oh_an_sistemas: 0.0132,
-  oh_an_hr_gastos: 41.287,
-  oh_an_hr_mo: 17.036,
-  oh_an_hr_dir: 13.027,
-  oh_an_hr_sis: 4.409,
-};
-
-// ─── Casos de prueba hardcodeados — valores corregidos del Excel ─
-// Umbrales: < 10% verde, 10-20% amarillo, > 20% rojo
-const VALIDATOR_TESTS = [
-  {
-    id: 'test1',
-    label: 'Test 1: 75x100mm, 4 tintas, laminado brillante, POR HORA, 1k',
-    config: { eje_mm: 75, desarrollo_mm: 100, escala_k: 1,   pm: 0.33, pl: 0.25, modo: 'hora' as const,  tintas: 4, omega: 1 },
-    expected: { metros_6MIL: 50.956, cpm_6MIL: 46.45, cpm_V12: 85.55, cpm_IJ: 43.44, cpm_MO: 545.22 },
-  },
-  {
-    id: 'test2',
-    label: 'Test 2: 75x100mm, 4 tintas, laminado brillante, POR HORA, 500k',
-    config: { eje_mm: 75, desarrollo_mm: 100, escala_k: 500, pm: 0.33, pl: 0.25, modo: 'hora' as const,  tintas: 4, omega: 1 },
-    expected: { metros_6MIL: 12900.103, cpm_6MIL: 11.23, cpm_V12: 9.73, cpm_IJ: 8.42, cpm_MO: 7.66 },
-  },
-  {
-    id: 'test3',
-    label: 'Test 3: 120x100mm, 4 tintas, laminado brillante, POR METRO, 1k',
-    config: { eje_mm: 120, desarrollo_mm: 100, escala_k: 1,   pm: 1.20, pl: 0.25, modo: 'metro' as const, tintas: 4, omega: 1 },
-    expected: { cpm_6MIL: 82.49, cpm_MO: 1224.20 },
-  },
-  {
-    id: 'test4',
-    label: 'Test 4: 120x100mm, 4 tintas, laminado brillante, POR METRO, 500k',
-    config: { eje_mm: 120, desarrollo_mm: 100, escala_k: 500, pm: 1.20, pl: 0.25, modo: 'metro' as const, tintas: 4, omega: 1 },
-    expected: { cpm_6MIL: 38.54, cpm_V12: 38.54, cpm_MO: 28.13 },
-  },
-];
-
-// ─── Función que construye su propio JobInputDigital con valores fijos ────────
-function runValidatorTest(
-  config: {
-    eje_mm: number; desarrollo_mm: number; escala_k: number;
-    pm: number; pl: number; modo: 'hora' | 'metro';
-    tintas: number; omega: number;
-  }
-): { results: Record<string, number>; metros_6MIL: number } {
-  const testJob: JobInputDigital = {
-    eje_mm: config.eje_mm,
-    desarrollo_mm: config.desarrollo_mm,
-    cantidad_millares: config.escala_k,
-    sustrato_precio_usd_m2: config.pm,
-    ancho_material_mm: 320,
-    ancho_material_20mil_mm: 714,
-    num_tintas: config.tintas,
-    cama_blanco: false,
-    blanco_cobertura_pct: 0,
-    blanco_num_camas: 0,
-    tinta_plata: false,
-    plata_cobertura_pct: 0,
-    plata_num_camas: 0,
-    tinta_invisible: false,
-    tinta_pink: false,
-    tinta_raised: false,
-    usa_primer_extra: false,
-    pasos_omega: config.omega,
-    pasos_estampador: 0,
-    pasos_jtfix: 0,
-    reinsercion_digital: false,
-    flete_externo: false,
-    flete_monto_mxn: 0,
-    margen_pct: 0,
-    modo_costo: config.modo,
-    desperdicio_pct: 0,
-  };
-
-  const testAcabados: Record<string, boolean> = {
-    laminado_autoadhesivo_brillante: config.pl > 0,
-  };
-
-  const testParams: GlobalParams = {
-    tipo_cambio: 22,
-    gap_eje_std: 3,
-    gap_desarrollo_std: 3,
-    sobre_ancho_papel: 18,
-    orillas_minimas: 7.5,
-    cobro_minimo: 60,
-    dias_mes: 20,
-    horas_dia: 12,
-    eficiencia: 0.85,
-    merma_estaqueado: 0,
-    metros_cambio_bobina: 20,
-    meses_depreciacion: 120,
-  };
-
-  const testRules: DigitalEligibilityRules = {
-    dimension_digital: false,
-    velocidad_resultante: false,
-  };
-
-  const results: Record<string, number> = {};
-  let metros_6MIL = 0;
-
-  for (const machineId of ['6MIL', 'V12', 'INK_JET']) {
-    const machine = DIGITAL_MACHINES.find(m => m.id === machineId);
-    if (!machine) continue;
-    const r = calcularCostoDigital(machine, testJob, testParams, testRules, testAcabados);
-    results[machineId] = r.costo_millar_usd;
-    if (machineId === '6MIL') {
-      metros_6MIL = r.metros_lineales ?? 0;
-    }
-  }
-
-  return { results, metros_6MIL };
-}
-
-// ─── Validador Automático (Sección 4C) ───────────────────────────────────────
-
-function ValidadorAutomatico({ onGoToEditor }: {
-  computeForScale?: (scale: number) => CostResult[];
-  onGoToEditor: () => void;
+function TableRow({ label, value, unit = '', hl = false }: {
+  label: string; value: string | number; unit?: string; hl?: boolean;
 }) {
-  const results = useMemo(() => {
-    return VALIDATOR_TESTS.map(test => {
-      // ✅ CORRECTO — usa parámetros propios, nunca lee formState
-      const { results: calcResults, metros_6MIL } = runValidatorTest(test.config);
+  return (
+    <tr className={`border-b border-slate-700/40 ${hl ? 'bg-orange-950/20' : ''}`}>
+      <td className="px-3 py-1.5 text-xs text-slate-400">{label}</td>
+      <td className="px-3 py-1.5 text-xs text-right font-mono text-slate-200">
+        {value}{unit && <span className="text-slate-500 ml-1">{unit}</span>}
+      </td>
+    </tr>
+  );
+}
 
-      const calc_cpm_6mil   = calcResults['6MIL']    ?? null;
-      const calc_cpm_v12    = calcResults['V12']     ?? null;
-      const calc_cpm_inkjet = calcResults['INK_JET'] ?? null;
-      // MO uses the expected value directly (interpolation table, not recalculated here)
-      const calc_cpm_mo: number | null = null;
+function Sec({ title, children, open: initOpen = true }: {
+  title: string; children: React.ReactNode; open?: boolean;
+}) {
+  const [open, setOpen] = useState(initOpen);
+  return (
+    <div className="border border-slate-700/50 rounded-lg overflow-hidden mb-2">
+      <button type="button" onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-slate-800/60 hover:bg-slate-800 text-left">
+        <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">{title}</span>
+        {open ? <ChevronDown size={12} className="text-slate-500" /> : <ChevronRight size={12} className="text-slate-500" />}
+      </button>
+      {open && <div className="bg-slate-900/40"><table className="w-full"><tbody>{children}</tbody></table></div>}
+    </div>
+  );
+}
 
-      const errPct = (calc: number | null, exp: number | undefined) => {
-        if (calc === null || exp === undefined || exp === 0) return null;
-        return Math.abs((calc - exp) / exp) * 100;
-      };
+function DigBreakdown({ r }: { r: DigitalCostResult }) {
+  return (
+    <div className="space-y-1 py-2 px-2">
+      <Sec title="Frames y metros">
+        <TableRow label="Cavidades al eje" value={r.cavidades_usadas} />
+        <TableRow label="Frames de tiro" value={r.frames_tiro} />
+        <TableRow label="Metros impresión" value={N(r.metros_lineales - 20, 2)} unit="m" />
+        <TableRow label="Metros total" value={N(r.metros_lineales, 2)} unit="m" />
+        <TableRow label="M² totales" value={N(r.m2_totales, 4)} unit="m²" />
+        <TableRow label="Velocidad efectiva" value={r.velocidad_efectiva} unit="m/min" />
+        <TableRow label="Tiempo real impresión" value={N(r.tiempo_hrs_real * 60, 2)} unit="min" />
+        <TableRow label="Tiempo cobrar" value={N(r.tiempo_hrs * 60, 2)} unit="min" />
+        <TableRow label="Clicks totales" value={r.clicks_totales} />
+        <TableRow label="Tintas totales" value={r.tintas_totales} />
+      </Sec>
+      <Sec title="Costos USD por componente">
+        <TableRow label="Sustrato" value={`$${N(r.costo_sustrato_usd, 4)}`} hl />
+        <TableRow label="Laminado" value={`$${N(r.costo_laminado_usd, 4)}`} hl />
+        <TableRow label="Clicks" value={`$${N(r.costo_click_usd, 4)}`} hl />
+        <TableRow label="HP (máquina)" value={`$${N(r.costo_hp_usd, 4)}`} hl />
+        <TableRow label="CEI rebobinadora" value={`$${N(r.costo_cei_usd, 4)}`} />
+        <TableRow label="Omega" value={`$${N(r.costo_omega_usd, 4)}`} />
+        <TableRow label="Estampador GM" value={`$${N(r.costo_estampador_usd, 4)}`} />
+        <TableRow label="Overhead gtos. grales" value={`$${N(r.costo_gtos_grales_usd, 4)}`} />
+        <TableRow label="Overhead gtos. dirección" value={`$${N(r.costo_gtos_direccion_usd, 4)}`} />
+        <TableRow label="Envíos/flete" value={`$${N(r.costo_envios_usd, 4)}`} />
+        <TableRow label="Otros acabados" value={`$${N(r.costo_acabados_usd - r.costo_laminado_usd, 4)}`} />
+      </Sec>
+      <Sec title="Totales">
+        <TableRow label="Costo fábrica" value={`$${N(r.costo_fabrica_usd, 4)}`} hl />
+        <TableRow label="Costo/millar USD" value={`$${N(r.costo_millar_usd, 4)}`} hl />
+        <TableRow label="Costo/millar MXN" value={`$${N(r.costo_millar_mxn, 2)}`} hl />
+      </Sec>
+    </div>
+  );
+}
 
-      const rows: { label: string; expected: number | undefined; calculated: number | null; errPct: number | null }[] = [];
+function AnaBreakdown({ r }: { r: AnalogCostResult }) {
+  return (
+    <div className="space-y-1 py-2 px-2">
+      <Sec title="Cilindro y cavidades">
+        <TableRow label="Dientes cilindro" value={r.dientes_optimos} />
+        <TableRow label="Des. máx." value={N(r.des_max_mm, 3)} unit="mm" />
+        <TableRow label="Gap desarrollo" value={N(r.gap_desarrollo_mm, 3)} unit="mm" />
+        <TableRow label="Cavidades eje" value={r.cavidades_eje} />
+        <TableRow label="Cavidades desarrollo" value={r.cavidades_desarrollo} />
+        <TableRow label="Metros lineales cobrar" value={N(r.metros_lineales, 2)} unit="m" />
+        <TableRow label="Velocidad efectiva" value={r.velocidad_efectiva} unit="m/min" />
+        <TableRow label="Tiempo cobrar" value={N(r.tiempo_hrs * 60, 2)} unit="min" />
+      </Sec>
+      <Sec title="Costos USD por componente">
+        <TableRow label="Material (sust. + lam.)" value={`$${N(r.costo_material_usd, 4)}`} hl />
+        <TableRow label="Tiempo máquina" value={`$${N(r.costo_maquina_usd, 4)}`} hl />
+        <TableRow label="Herramientas / grabados" value={`$${N(r.costo_herramientas_usd, 4)}`} />
+        <TableRow label="Acabados adicionales" value={`$${N(r.costo_acabados_usd, 4)}`} />
+        <TableRow label="Gasto adicional" value={`$${N(r.gasto_adicional_usd, 4)}`} />
+      </Sec>
+      <Sec title="Totales">
+        <TableRow label="Costo fábrica" value={`$${N(r.costo_fabrica_usd, 4)}`} hl />
+        <TableRow label="Costo/millar USD" value={`$${N(r.costo_millar_usd, 4)}`} hl />
+        <TableRow label="Costo/millar MXN" value={`$${N(r.costo_millar_mxn, 2)}`} hl />
+      </Sec>
+    </div>
+  );
+}
 
-      const exp = test.expected as Record<string, number | undefined>;
-
-      if (exp.metros_6MIL !== undefined) {
-        rows.push({ label: 'Metros digital (6MIL)', expected: exp.metros_6MIL, calculated: metros_6MIL || null, errPct: errPct(metros_6MIL || null, exp.metros_6MIL) });
-      }
-      if (exp.cpm_6MIL !== undefined) {
-        rows.push({ label: '6MIL cpm (USD)', expected: exp.cpm_6MIL, calculated: calc_cpm_6mil, errPct: errPct(calc_cpm_6mil, exp.cpm_6MIL) });
-      }
-      if (exp.cpm_V12 !== undefined) {
-        rows.push({ label: 'V12 cpm (USD)', expected: exp.cpm_V12, calculated: calc_cpm_v12, errPct: errPct(calc_cpm_v12, exp.cpm_V12) });
-      }
-      if (exp.cpm_IJ !== undefined) {
-        rows.push({ label: 'INK JET cpm (USD)', expected: exp.cpm_IJ, calculated: calc_cpm_inkjet, errPct: errPct(calc_cpm_inkjet, exp.cpm_IJ) });
-      }
-      if (exp.cpm_MO !== undefined) {
-        rows.push({ label: 'MO cpm (USD)', expected: exp.cpm_MO, calculated: calc_cpm_mo, errPct: errPct(calc_cpm_mo, exp.cpm_MO) });
-      }
-
-      // Umbrales: < 10% verde, 10-20% amarillo, > 20% rojo
-      const hasRed    = rows.some(r => r.errPct !== null && r.errPct > 20);
-      const hasYellow = rows.some(r => r.errPct !== null && r.errPct > 10 && r.errPct <= 20);
-
-      return { ...test, rows, hasRed, hasYellow };
-    });
-  }, []);
-
-  const anyRed = results.some(r => r.hasRed);
-
-  const ErrCell = ({ errPct }: { errPct: number | null }) => {
-    if (errPct === null) return <span className="text-slate-500">—</span>;
-    if (errPct < 10) return <span className="text-green-400 font-mono">{errPct.toFixed(1)}%</span>;
-    if (errPct <= 20) return <span className="text-yellow-400 font-mono font-bold">{errPct.toFixed(1)}%</span>;
-    return <span className="text-red-400 font-mono font-bold">{errPct.toFixed(1)}%</span>;
-  };
-
-  const StatusIcon = ({ hasRed, hasYellow }: { hasRed: boolean; hasYellow: boolean }) => {
-    if (hasRed) return <XCircle size={14} className="text-red-400" />;
-    if (hasYellow) return <AlertTriangle size={14} className="text-yellow-400" />;
-    return <CheckCircle size={14} className="text-green-400" />;
-  };
+function InspectorTab({ computeForScale, scales }: {
+  computeForScale: (s: number) => CostResult[]; scales: number[];
+}) {
+  const [escala, setEscala] = useState(scales[3] ?? 10);
+  const [sel, setSel] = useState<string | null>(null);
+  const results = useMemo(() => { try { return computeForScale(escala); } catch { return []; } }, [computeForScale, escala]);
+  const selected = results.find(r => r.machine_id === sel) ?? results[0];
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 text-xs text-slate-400">
-        <span className="w-3 h-3 rounded-full bg-green-500 inline-block" /> Error &lt; 10% (OK)
-        <span className="w-3 h-3 rounded-full bg-yellow-500 inline-block ml-2" /> 10–20% (advertencia)
-        <span className="w-3 h-3 rounded-full bg-red-500 inline-block ml-2" /> &gt; 20% (error)
-      </div>
-
-      {anyRed && (
-        <div className="flex items-start gap-2.5 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2.5">
-          <AlertTriangle size={14} className="text-red-400 flex-shrink-0 mt-0.5" />
-          <div className="text-xs text-red-300">
-            <span className="font-semibold">⚠️ El algoritmo tiene discrepancias. Revisa los parámetros en el Editor.</span>
-            <button
-              type="button"
-              onClick={onGoToEditor}
-              className="ml-2 underline hover:text-red-200 transition-colors"
-            >
-              → Ir al Editor de Parámetros
+      <div className="flex items-center gap-3 flex-wrap">
+        <label className="text-xs text-slate-400">Escala:</label>
+        <select value={escala} onChange={e => setEscala(Number(e.target.value))}
+          className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-orange-500">
+          {scales.map(s => <option key={s} value={s}>{s.toLocaleString()}k pzas</option>)}
+        </select>
+        <div className="flex gap-1 flex-wrap">
+          {results.map(r => (
+            <button key={r.machine_id} type="button" onClick={() => setSel(r.machine_id)}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                (sel === r.machine_id || (!sel && r === results[0]))
+                  ? 'bg-orange-600 text-white'
+                  : r.elegible ? 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  : 'bg-slate-800 text-slate-500 hover:bg-slate-700'
+              }`}>
+              {r.machine_name}
+              {r.elegible
+                ? <CheckCircle size={10} className="inline ml-1 text-green-400" />
+                : <XCircle size={10} className="inline ml-1 text-red-400" />}
             </button>
+          ))}
+        </div>
+      </div>
+      {selected && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-sm font-semibold text-slate-200">{selected.machine_name}</span>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${
+              selected.type === 'digital' ? 'bg-blue-900/50 text-blue-300' : 'bg-teal-900/50 text-teal-300'
+            }`}>{selected.type}</span>
+            {!selected.elegible && selected.razones_falla.length > 0 && (
+              <span className="text-xs text-red-400">{selected.razones_falla.join(' · ')}</span>
+            )}
           </div>
+          {selected.type === 'digital'
+            ? <DigBreakdown r={selected as DigitalCostResult} />
+            : <AnaBreakdown r={selected as AnalogCostResult} />}
         </div>
       )}
+    </div>
+  );
+}
 
-      {results.map((test) => (
-        <div key={test.id} className="border border-slate-700 rounded-lg overflow-hidden">
-          <div className={`flex items-center gap-2 px-3 py-2 border-b border-slate-700 ${
-            test.hasRed ? 'bg-red-500/10' : test.hasYellow ? 'bg-yellow-500/10' : 'bg-green-500/10'
+function CilindrosTab({ des_mm }: { des_mm: number }) {
+  const maquinas = ['MO', 'FA10', 'FA6', 'GAL1'];
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-500">Desarrollo actual: <span className="text-orange-300 font-mono">{des_mm} mm</span></p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {maquinas.map(m => {
+          const r = seleccionarCilindroOptimo(m, des_mm);
+          return (
+            <div key={m} className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold text-slate-200">{m}</span>
+                {r
+                  ? <span className="text-xs text-green-400 flex items-center gap-1"><CheckCircle size={11} />Disponible</span>
+                  : <span className="text-xs text-red-400 flex items-center gap-1"><XCircle size={11} />Sin cilindro</span>}
+              </div>
+              {r ? (
+                <table className="w-full"><tbody>
+                  <TableRow label="Dientes" value={r.dientes} />
+                  <TableRow label="Des. máx." value={N(r.des_max_mm, 3)} unit="mm" />
+                  <TableRow label="Gap real" value={N(r.gap_mm, 3)} unit="mm" />
+                  <TableRow label="Cavidades des." value={r.cav_des} />
+                  <TableRow label="Des + gap" value={N(r.des_con_gap_mm, 3)} unit="mm" />
+                </tbody></table>
+              ) : (
+                <p className="text-xs text-slate-500 italic">Sin cilindro con gap válido para este desarrollo.</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MaterialesTab({ params, onChange }: { params: ParametersState; onChange: (p: ParametersState) => void }) {
+  return (
+    <div className="space-y-5">
+      <div>
+        <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Sustratos</h4>
+        <table className="w-full text-xs">
+          <thead><tr className="bg-slate-800 border-b border-slate-700">
+            <th className="text-left px-3 py-2 text-slate-400">Material</th>
+            <th className="text-right px-3 py-2 text-slate-400">USD/m²</th>
+          </tr></thead>
+          <tbody>
+            {params.sustratos.map((s, i) => (
+              <tr key={s.nombre ?? i} className={`border-b border-slate-700/40 ${i % 2 === 0 ? 'bg-slate-800/20' : ''}`}>
+                <td className="px-3 py-1.5 text-slate-300">{s.nombre}</td>
+                <td className="px-3 py-1 text-right">
+                  <input type="number" step={0.001} value={s.precio_usd_m2}
+                    onChange={e => onChange({ ...params, sustratos: params.sustratos.map((x, j) =>
+                      j === i ? { ...x, precio_usd_m2: parseFloat(e.target.value) || 0 } : x) })}
+                    className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-xs text-right text-slate-200 focus:outline-none focus:border-orange-500" />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Laminados</h4>
+        <table className="w-full text-xs">
+          <thead><tr className="bg-slate-800 border-b border-slate-700">
+            <th className="text-left px-3 py-2 text-slate-400">Tipo</th>
+            <th className="text-right px-3 py-2 text-slate-400">USD/m²</th>
+          </tr></thead>
+          <tbody>
+            {params.laminados.map((l, i) => (
+              <tr key={l.nombre ?? i} className={`border-b border-slate-700/40 ${i % 2 === 0 ? 'bg-slate-800/20' : ''}`}>
+                <td className="px-3 py-1.5 text-slate-300">{l.nombre}</td>
+                <td className="px-3 py-1 text-right">
+                  <input type="number" step={0.001} value={l.precio_usd_m2}
+                    onChange={e => onChange({ ...params, laminados: params.laminados.map((x, j) =>
+                      j === i ? { ...x, precio_usd_m2: parseFloat(e.target.value) || 0 } : x) })}
+                    className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-xs text-right text-slate-200 focus:outline-none focus:border-orange-500" />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function MaquinasTab({ params, onChange }: { params: ParametersState; onChange: (p: ParametersState) => void }) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Velocidades digitales (m/min)</h4>
+        <div className="overflow-x-auto">
+          <table className="text-xs w-full">
+            <thead><tr className="bg-slate-800 border-b border-slate-700">
+              <th className="text-left px-3 py-2 text-slate-400 w-14">Tintas</th>
+              {Object.keys(params.speedTable).map(m => (
+                <th key={m} className="text-center px-2 py-2 text-slate-400">{m}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {Array.from({ length: 14 }, (_, i) => i + 1).map(t => (
+                <tr key={t} className={`border-b border-slate-700/40 ${t % 2 === 0 ? 'bg-slate-800/20' : ''}`}>
+                  <td className="px-3 py-1 text-slate-400 font-mono">{t}</td>
+                  {Object.keys(params.speedTable).map(m => (
+                    <td key={m} className="px-1 py-1 text-center">
+                      <input type="number" step={1} min={0} value={params.speedTable[m]?.[t] ?? 0}
+                        onChange={e => onChange({ ...params, speedTable: {
+                          ...params.speedTable, [m]: { ...params.speedTable[m], [t]: parseInt(e.target.value) || 0 }
+                        }})}
+                        className="w-14 bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-xs text-center text-slate-200 focus:outline-none focus:border-orange-500" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Clicks (USD/click)</h4>
+        <table className="w-full text-xs">
+          <thead><tr className="bg-slate-800 border-b border-slate-700">
+            <th className="text-left px-3 py-2 text-slate-400">Máquina</th>
+            <th className="text-right px-3 py-2 text-slate-400">Base USD</th>
+            <th className="text-right px-3 py-2 text-slate-400">Margen %</th>
+            <th className="text-right px-3 py-2 text-orange-400">Efectivo</th>
+          </tr></thead>
+          <tbody>
+            {params.clickValues.map((cv, i) => (
+              <tr key={cv.machine_id} className={`border-b border-slate-700/40 ${i % 2 === 0 ? 'bg-slate-800/20' : ''}`}>
+                <td className="px-3 py-1.5 text-slate-300">{cv.machine_name}</td>
+                <td className="px-2 py-1 text-right">
+                  <input type="number" step={0.0001} value={cv.valor_click_base_usd}
+                    onChange={e => onChange({ ...params, clickValues: params.clickValues.map((x, j) =>
+                      j === i ? { ...x, valor_click_base_usd: parseFloat(e.target.value) || 0 } : x) })}
+                    className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-xs text-right text-slate-200 focus:outline-none focus:border-orange-500" />
+                </td>
+                <td className="px-2 py-1 text-right">
+                  <input type="number" step={1} value={Math.round(cv.margen_click * 100)}
+                    onChange={e => onChange({ ...params, clickValues: params.clickValues.map((x, j) =>
+                      j === i ? { ...x, margen_click: (parseFloat(e.target.value) || 0) / 100 } : x) })}
+                    className="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-xs text-right text-slate-200 focus:outline-none focus:border-orange-500" />
+                </td>
+                <td className="px-3 py-1.5 text-right font-mono text-orange-300">
+                  {(cv.valor_click_base_usd * (1 + cv.margen_click)).toFixed(4)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Máquinas digitales — parámetros</h4>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead><tr className="bg-slate-800 border-b border-slate-700">
+              <th className="text-left px-3 py-2 text-slate-400">Máquina</th>
+              <th className="text-right px-2 py-2 text-slate-400">Frame cm</th>
+              <th className="text-right px-2 py-2 text-slate-400">Setup m</th>
+              <th className="text-right px-2 py-2 text-slate-400">Planilla mm</th>
+              <th className="text-right px-2 py-2 text-slate-400">Tintas max</th>
+            </tr></thead>
+            <tbody>
+              {params.digitalMachines.map((m, i) => (
+                <tr key={m.id} className={`border-b border-slate-700/40 ${i % 2 === 0 ? 'bg-slate-800/20' : ''}`}>
+                  <td className="px-3 py-1.5 text-slate-300 font-medium">{m.name}</td>
+                  {(['frame_largo_cm', 'setup_metros', 'ancho_13_mm', 'tintas_max'] as const).map(f => (
+                    <td key={f} className="px-2 py-1 text-right">
+                      <input type="number" step={f === 'tintas_max' ? 1 : 0.1}
+                        value={(m as unknown as Record<string, unknown>)[f] as number}
+                        onChange={e => onChange({ ...params, digitalMachines: params.digitalMachines.map((x, j) =>
+                          j === i ? { ...x, [f]: parseFloat(e.target.value) || 0 } : x) })}
+                        className="w-20 bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-xs text-right text-slate-200 focus:outline-none focus:border-orange-500" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Máquinas analógicas — parámetros</h4>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead><tr className="bg-slate-800 border-b border-slate-700">
+              <th className="text-left px-3 py-2 text-slate-400">Máquina</th>
+              <th className="text-right px-2 py-2 text-slate-400">Ancho max</th>
+              <th className="text-right px-2 py-2 text-slate-400">Vel std</th>
+              <th className="text-right px-2 py-2 text-slate-400">Vel screen</th>
+              <th className="text-right px-2 py-2 text-slate-400">Vel HS</th>
+              <th className="text-right px-2 py-2 text-slate-400">Cab. off</th>
+              <th className="text-right px-2 py-2 text-slate-400">Cab. flex</th>
+            </tr></thead>
+            <tbody>
+              {params.analogMachines.map((m, i) => (
+                <tr key={m.id} className={`border-b border-slate-700/40 ${i % 2 === 0 ? 'bg-slate-800/20' : ''}`}>
+                  <td className="px-3 py-1.5 text-slate-300 font-medium">{m.name}</td>
+                  {(['ancho_max_mm', 'vel_std', 'vel_screen', 'vel_hs', 'cabezas_offset', 'cabezas_flexo'] as const).map(f => (
+                    <td key={f} className="px-2 py-1 text-right">
+                      <input type="number" step={1}
+                        value={(m as unknown as Record<string, unknown>)[f] as number}
+                        onChange={e => onChange({ ...params, analogMachines: params.analogMachines.map((x, j) =>
+                          j === i ? { ...x, [f]: parseFloat(e.target.value) || 0 } : x) })}
+                        className="w-20 bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-xs text-right text-slate-200 focus:outline-none focus:border-orange-500" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const TESTS = [
+  { id: 't1', label: '6MIL · 50×50mm · pm=0.63 · lam brillante · omega=2 · stamp=2',
+    scales: [1, 5, 10, 50, 100, 220, 500, 6000],
+    expected: { 1:1196.68, 5:362.63, 10:258.70, 50:182.49, 100:174.62, 220:170.54, 500:168.51, 6000:167.24 },
+    machine: '6MIL' },
+];
+
+function ValidadorTab({ computeForScale, scales }: {
+  computeForScale: (s: number) => CostResult[]; scales: number[];
+}) {
+  const results = useMemo(() => TESTS.map(test => {
+    const rows = test.scales.map(k => {
+      const res = computeForScale(k);
+      const m = res.find(r => r.machine_id === test.machine);
+      const calc = m ? m.costo_millar_usd * 22 : null;
+      const exp = test.expected[k as keyof typeof test.expected];
+      const err = calc != null && exp ? Math.abs((calc - exp) / exp) * 100 : null;
+      return { k, calc, exp, err };
+    });
+    const maxErr = Math.max(0, ...rows.filter(r => r.err != null).map(r => r.err!));
+    return { ...test, rows, maxErr };
+  }), [computeForScale]);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-slate-500">Verde &lt;1% · Amarillo &lt;3% · Rojo ≥3%</p>
+      {results.map(test => (
+        <div key={test.id} className="border border-slate-700 rounded-xl overflow-hidden">
+          <div className={`flex items-center gap-2 px-3 py-2.5 border-b border-slate-700 ${
+            test.maxErr >= 3 ? 'bg-red-950/30' : test.maxErr >= 1 ? 'bg-yellow-950/30' : 'bg-green-950/30'
           }`}>
-            <StatusIcon hasRed={test.hasRed} hasYellow={test.hasYellow} />
-            <span className="text-xs font-semibold text-slate-200">{test.label}</span>
+            {test.maxErr >= 3
+              ? <AlertTriangle size={13} className="text-red-400" />
+              : test.maxErr >= 1
+              ? <AlertTriangle size={13} className="text-yellow-400" />
+              : <CheckCircle size={13} className="text-green-400" />}
+            <span className="text-xs font-medium text-slate-200">{test.label}</span>
+            <span className="text-xs text-slate-500 ml-auto">Max: {test.maxErr.toFixed(2)}%</span>
           </div>
           <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-slate-800 border-b border-slate-700">
-                <th className="text-left px-3 py-2 text-slate-400 font-medium">Componente</th>
-                <th className="text-right px-3 py-2 text-slate-400 font-medium">Esperado</th>
-                <th className="text-right px-3 py-2 text-orange-400 font-medium">Calculado</th>
-                <th className="text-center px-3 py-2 text-slate-400 font-medium">Error %</th>
-              </tr>
-            </thead>
+            <thead><tr className="bg-slate-800/50 border-b border-slate-700">
+              <th className="text-right px-3 py-1.5 text-slate-400">Escala k</th>
+              <th className="text-right px-3 py-1.5 text-slate-400">Excel MXN/k</th>
+              <th className="text-right px-3 py-1.5 text-orange-400">Calc MXN/k</th>
+              <th className="text-center px-3 py-1.5 text-slate-400">Error %</th>
+            </tr></thead>
             <tbody>
-              {test.rows.map((row, i) => (
-                <tr key={i} className={`border-b border-slate-700/50 ${i % 2 === 0 ? 'bg-slate-800/20' : ''}`}>
-                  <td className="px-3 py-2 text-slate-300">{row.label}</td>
-                  <td className="px-3 py-2 text-right font-mono text-slate-400">
-                    {row.expected !== undefined ? row.expected.toFixed(3) : '—'}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-orange-300">
-                    {row.calculated !== null ? row.calculated.toFixed(3) : '—'}
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    <ErrCell errPct={row.errPct} />
+              {test.rows.map(r => (
+                <tr key={r.k} className="border-b border-slate-700/30 even:bg-slate-800/20">
+                  <td className="px-3 py-1.5 text-right font-mono text-slate-400">{r.k}</td>
+                  <td className="px-3 py-1.5 text-right font-mono text-slate-400">{r.exp?.toFixed(2) ?? '—'}</td>
+                  <td className="px-3 py-1.5 text-right font-mono text-orange-300">{r.calc?.toFixed(2) ?? '—'}</td>
+                  <td className="px-3 py-1.5 text-center font-mono">
+                    {r.err == null ? <span className="text-slate-500">—</span>
+                      : r.err < 1 ? <span className="text-green-400">{r.err.toFixed(2)}%</span>
+                      : r.err < 3 ? <span className="text-yellow-400">{r.err.toFixed(2)}%</span>
+                      : <span className="text-red-400 font-bold">{r.err.toFixed(2)}%</span>}
                   </td>
                 </tr>
               ))}
@@ -309,249 +460,65 @@ function ValidadorAutomatico({ onGoToEditor }: {
   );
 }
 
-// ─── Inspector de Fórmulas (Sección 4A) ──────────────────────────────────────
-
-function InspectorFormulas({
-  computeForScale,
-  datosComunes,
-  modoCosto,
-}: {
-  computeForScale: (scale: number) => CostResult[];
-  datosComunes: DatosComunes;
-  modoCosto: 'hora' | 'metro';
-}) {
-  const [escala, setEscala] = useState(10);
-  const results = useMemo(() => {
-    try {
-      return computeForScale(escala);
-    } catch {
-      return [];
-    }
-  }, [computeForScale, escala]);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <label className="text-xs text-slate-400 whitespace-nowrap">Escala (miles):</label>
-        <input
-          type="number"
-          min={1}
-          max={1000}
-          value={escala}
-          onChange={e => setEscala(Number(e.target.value))}
-          className="w-24 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
-        />
-        <span className="text-xs text-slate-500">
-          Modo: <span className="text-purple-400 font-medium">{modoCosto === 'hora' ? 'POR HORA' : 'POR METRO'}</span>
-        </span>
-      </div>
-
-      {results.length === 0 ? (
-        <p className="text-xs text-slate-500 italic">Sin resultados para esta escala.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-slate-800 border-b border-slate-700">
-                <th className="text-left px-3 py-2 text-slate-400 font-medium">Máquina</th>
-                <th className="text-center px-3 py-2 text-slate-400 font-medium">Elegible</th>
-                <th className="text-right px-3 py-2 text-slate-400 font-medium">CPM (USD)</th>
-                <th className="text-right px-3 py-2 text-slate-400 font-medium">CPM (MXN)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.map((r, i) => (
-                <tr key={r.machine_id} className={`border-b border-slate-700/50 ${i % 2 === 0 ? 'bg-slate-800/20' : ''}`}>
-                  <td className="px-3 py-2 text-slate-200 font-medium">{r.machine_name}</td>
-                  <td className="px-3 py-2 text-center">
-                    {r.elegible
-                      ? <CheckCircle size={12} className="text-green-400 inline" />
-                      : <XCircle size={12} className="text-red-400 inline" />}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-orange-300">
-                    {r.costo_millar_usd.toFixed(2)}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-slate-300">
-                    {(r.costo_millar_usd * 22).toFixed(2)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Editor de Parámetros (Sección 4B) ───────────────────────────────────────
-
-function EditorParametros({
-  params,
-  onChange,
-}: {
-  params: AlgoParams;
-  onChange: (p: AlgoParams) => void;
-}) {
-  const field = (key: keyof AlgoParams, label: string, step = 0.001) => (
-    <div key={key} className="flex items-center justify-between gap-2">
-      <label className="text-xs text-slate-400 flex-1">{label}</label>
-      <input
-        type="number"
-        step={step}
-        value={params[key]}
-        onChange={e => onChange({ ...params, [key]: parseFloat(e.target.value) || 0 })}
-        className="w-28 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-right text-slate-200 focus:outline-none focus:border-purple-500"
-      />
-    </div>
-  );
-
-  return (
-    <div className="space-y-5">
-      <div>
-        <h4 className="text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wide">Globales</h4>
-        <div className="space-y-1.5">
-          {field('tipo_cambio', 'Tipo de cambio (MXN/USD)', 0.1)}
-          {field('dias_mes', 'Días por mes', 1)}
-          {field('horas_dia', 'Horas por día', 0.5)}
-          {field('eficiencia', 'Eficiencia', 0.01)}
-        </div>
-      </div>
-
-      <div>
-        <h4 className="text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wide">Overhead Digital — Por M²</h4>
-        <div className="space-y-1.5">
-          {field('oh_dig_gastos_grales', 'Gastos grales (USD/m²)')}
-          {field('oh_dig_depreciaciones', 'Depreciaciones (USD/m²)')}
-          {field('oh_dig_mano_obra', 'Mano de obra (USD/m²)')}
-          {field('oh_dig_direccion', 'Dirección (USD/m²)')}
-          {field('oh_dig_sistemas', 'Sistemas (USD/m²)')}
-        </div>
-      </div>
-
-      <div>
-        <h4 className="text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wide">Overhead Digital — Por Hora</h4>
-        <div className="space-y-1.5">
-          {field('oh_dig_hr_gastos_grales', 'Gastos grales (USD/hr)', 0.01)}
-          {field('oh_dig_hr_depreciaciones', 'Depreciaciones (USD/hr)', 0.01)}
-          {field('oh_dig_hr_mano_obra', 'Mano de obra (USD/hr)', 0.01)}
-          {field('oh_dig_hr_direccion', 'Dirección (USD/hr)', 0.01)}
-          {field('oh_dig_hr_sistemas', 'Sistemas (USD/hr)', 0.01)}
-        </div>
-      </div>
-
-      <div>
-        <h4 className="text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wide">Overhead Analógico — Por M²</h4>
-        <div className="space-y-1.5">
-          {field('oh_an_gastos_venta', 'Gastos de venta (USD/m²)')}
-          {field('oh_an_mano_obra', 'Mano de obra (USD/m²)')}
-          {field('oh_an_direccion', 'Dirección (USD/m²)')}
-          {field('oh_an_sistemas', 'Sistemas (USD/m²)')}
-        </div>
-      </div>
-
-      <div>
-        <h4 className="text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wide">Overhead Analógico — Por Hora</h4>
-        <div className="space-y-1.5">
-          {field('oh_an_hr_gastos', 'Gastos (USD/hr)', 0.01)}
-          {field('oh_an_hr_mo', 'Mano de obra (USD/hr)', 0.01)}
-          {field('oh_an_hr_dir', 'Dirección (USD/hr)', 0.01)}
-          {field('oh_an_hr_sis', 'Sistemas (USD/hr)', 0.01)}
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => onChange({ ...DEFAULT_ALGO_PARAMS })}
-        className="text-xs text-slate-400 hover:text-slate-200 underline transition-colors"
-      >
-        Restaurar valores por defecto
-      </button>
-    </div>
-  );
-}
-
-// ─── AlgoritmoTab principal ───────────────────────────────────────────────────
-
-type AlgoSubTab = 'inspector' | 'editor' | 'validador';
+type SubTab = 'inspector' | 'cilindros' | 'materiales' | 'maquinas' | 'validador';
 
 export default function AlgoritmoTab({
-  computeForScale,
-  scales,
-  datosComunes,
-  modoCosto,
-  machineParameters,
-  onMachineParametersChange,
-  globalParams,
+  computeForScale, scales, datosComunes,
+  machineParameters, onMachineParametersChange, globalParams: _globalParams,
 }: Props) {
-  const [subTab, setSubTab] = useState<AlgoSubTab>('inspector');
-  const [algoParams, setAlgoParams] = useState<AlgoParams>({ ...DEFAULT_ALGO_PARAMS });
-
-  // Auto-run validator on mount
-  useEffect(() => {
-    // Validator runs automatically via useMemo in ValidadorAutomatico
-  }, []);
+  const [sub, setSub] = useState<SubTab>('inspector');
+  const TABS: { id: SubTab; label: string }[] = [
+    { id: 'inspector',  label: 'Desglose paso a paso' },
+    { id: 'cilindros',  label: 'Cilindros' },
+    { id: 'materiales', label: 'Materiales y acabados' },
+    { id: 'maquinas',   label: 'Parámetros de máquinas' },
+    { id: 'validador',  label: 'Validador vs Excel' },
+  ];
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Sub-tab navigation */}
-      <div className="flex bg-slate-800 rounded-lg p-0.5 gap-0.5 w-fit">
-        {([
-          { id: 'inspector', label: 'Inspector de Fórmulas' },
-          { id: 'editor', label: 'Editor de Parámetros' },
-          { id: 'validador', label: 'Validador Automático' },
-        ] as { id: AlgoSubTab; label: string }[]).map(tab => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setSubTab(tab.id)}
+      <div className="flex flex-wrap bg-slate-800 rounded-lg p-0.5 gap-0.5 w-fit">
+        {TABS.map(t => (
+          <button key={t.id} type="button" onClick={() => setSub(t.id)}
             className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-              subTab === tab.id
-                ? 'bg-purple-600 text-white' :'text-slate-500 hover:text-slate-300'
-            }`}
-          >
-            {tab.label}
-          </button>
+              sub === t.id ? 'bg-purple-600 text-white' : 'text-slate-500 hover:text-slate-300'
+            }`}>{t.label}</button>
         ))}
       </div>
-
-      {/* Content */}
       <div className="card-base">
-        {subTab === 'inspector' && (
+        {sub === 'inspector' && (
           <div>
-            <h3 className="font-semibold text-slate-100 text-sm mb-1">Inspector de Fórmulas</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Muestra los valores intermedios paso a paso para la máquina y escala seleccionadas.
-            </p>
-            <InspectorFormulas
-              computeForScale={computeForScale}
-              datosComunes={datosComunes}
-              modoCosto={modoCosto}
-            />
+            <h3 className="font-semibold text-slate-100 text-sm mb-1">Desglose paso a paso</h3>
+            <p className="text-xs text-slate-500 mb-4">Todos los componentes del costo y los valores intermedios que llevaron al resultado.</p>
+            <InspectorTab computeForScale={computeForScale} scales={scales} />
           </div>
         )}
-
-        {subTab === 'editor' && (
+        {sub === 'cilindros' && (
           <div>
-            <h3 className="font-semibold text-slate-100 text-sm mb-1">Editor de Parámetros del Algoritmo</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Edita los parámetros numéricos del algoritmo. Los cambios se reflejan inmediatamente en los cálculos.
-            </p>
-            <EditorParametros params={algoParams} onChange={setAlgoParams} />
+            <h3 className="font-semibold text-slate-100 text-sm mb-1">Cilindros disponibles</h3>
+            <p className="text-xs text-slate-500 mb-4">Cilindro óptimo según inventario para el desarrollo actual.</p>
+            <CilindrosTab des_mm={datosComunes.desarrollo_mm} />
           </div>
         )}
-
-        {subTab === 'validador' && (
+        {sub === 'materiales' && (
           <div>
-            <h3 className="font-semibold text-slate-100 text-sm mb-1">Validador Automático</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Compara los resultados calculados contra valores de referencia del Excel original.
-              Tests 1-2: eje=75mm, des=100mm, POR HORA. Tests 3-4: eje=120mm, des=100mm, POR METRO. Todos con laminado brillante, 4 tintas.
-            </p>
-            <ValidadorAutomatico
-              computeForScale={computeForScale}
-              onGoToEditor={() => setSubTab('editor')}
-            />
+            <h3 className="font-semibold text-slate-100 text-sm mb-1">Materiales y acabados</h3>
+            <p className="text-xs text-slate-500 mb-4">Edita precios de sustratos y laminados. Los cambios aplican inmediatamente.</p>
+            <MaterialesTab params={machineParameters} onChange={onMachineParametersChange} />
+          </div>
+        )}
+        {sub === 'maquinas' && (
+          <div>
+            <h3 className="font-semibold text-slate-100 text-sm mb-1">Parámetros de máquinas</h3>
+            <p className="text-xs text-slate-500 mb-4">Velocidades, clicks, frames, setups. Edita cualquier valor y el cotizador recalcula en tiempo real.</p>
+            <MaquinasTab params={machineParameters} onChange={onMachineParametersChange} />
+          </div>
+        )}
+        {sub === 'validador' && (
+          <div>
+            <h3 className="font-semibold text-slate-100 text-sm mb-1">Validador vs Excel</h3>
+            <p className="text-xs text-slate-500 mb-4">Compara resultados contra valores verificados del Excel de referencia. Nota: el validador usa los parámetros actuales del cotizador, incluyendo omega y stamp.</p>
+            <ValidadorTab computeForScale={computeForScale} scales={scales} />
           </div>
         )}
       </div>

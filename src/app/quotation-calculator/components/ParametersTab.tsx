@@ -962,6 +962,8 @@ const VALIDATION_CASES: ValidationCase[] = [
 
 // Desglose de referencia para 500k, eje=120mm, des=100mm, mat=$1.20, laminado brillante, 4 tintas, 1 Omega
 // VERIFICADO contra Excel original (PARTE 6 del spec)
+interface DesgloseLine { label: string; valor: number; color: string; }
+
 const DESGLOSE_REF_500K_EJE120: DesgloseLine[] = [
   { label: 'SUSTRATO',              valor: 9897.68,  color: 'text-blue-300' },
   { label: 'TINTA / CLICKS',        valor: 2688.91,  color: 'text-orange-300' },
@@ -1022,7 +1024,7 @@ const VALIDATION_JOB_DIGITAL = {
 
 // ... existing code ...
 
-const ParametersTab: React.FC = () => {
+const ParametersTab: React.FC<Props> = ({ params, onChange, globalParams: _g }) => {
   React.useEffect(() => {
     // eslint-disable-next-line no-console
     console.warn('Placeholder: ParametersTab is not implemented yet.');

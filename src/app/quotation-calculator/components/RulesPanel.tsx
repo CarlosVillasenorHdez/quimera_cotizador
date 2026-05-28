@@ -1,6 +1,6 @@
 'use client';
 import React from 'react';
-import { Shield, ShieldOff, Zap, ToggleLeft, Info } from 'lucide-react';
+import { Shield, ShieldOff, Info } from 'lucide-react';
 import Toggle from './Toggle';
 import { EligibilityRules } from '../../../calculators/analogico';
 import { DigitalEligibilityRules } from '../../../calculators/digital';
@@ -10,8 +10,6 @@ export interface AllRules extends EligibilityRules, DigitalEligibilityRules {}
 interface RulesPanelProps {
   rules: AllRules;
   onRulesChange: (rules: AllRules) => void;
-  modoCosto: 'hora' | 'metro';
-  onModoCostoChange: (m: 'hora' | 'metro') => void;
 }
 
 const RULE_DESCRIPTIONS: Record<keyof AllRules, { label: string; desc: string }> = {
@@ -44,8 +42,6 @@ const RULE_DESCRIPTIONS: Record<keyof AllRules, { label: string; desc: string }>
 export default function RulesPanel({
   rules,
   onRulesChange,
-  modoCosto,
-  onModoCostoChange,
 }: RulesPanelProps) {
   const disabledCount = Object.values(rules).filter((v) => !v).length;
 
@@ -55,33 +51,6 @@ export default function RulesPanel({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Modo de costo */}
-      <div className="card-base p-4">
-        <p className="section-header mb-3">Modo de costo</p>
-        <div className="flex bg-slate-800 rounded-lg p-1 gap-1">
-          <button
-            type="button"
-            onClick={() => onModoCostoChange('hora')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-sm font-medium transition-all duration-150 ${
-              modoCosto === 'hora' ?'bg-orange-500 text-white shadow-sm' :'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Zap size={14} />
-            Por hora
-          </button>
-          <button
-            type="button"
-            onClick={() => onModoCostoChange('metro')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-sm font-medium transition-all duration-150 ${
-              modoCosto === 'metro' ?'bg-orange-500 text-white shadow-sm' :'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <ToggleLeft size={14} />
-            Por metro
-          </button>
-        </div>
-      </div>
-
       {/* Simulation warning */}
       {disabledCount > 0 && (
         <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 flex items-start gap-2">
