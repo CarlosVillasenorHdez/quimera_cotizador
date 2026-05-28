@@ -1,9 +1,11 @@
-import { createClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+/**
+ * Cliente Supabase que enruta todas las llamadas por /api/db (Route Handler).
+ * Esto hace que los requests salgan desde Vercel (server-side), no desde
+ * el browser — resolviendo la restricción de host del sb_publishable key.
+ *
+ * Flujo:
+ *   Browser → /api/db (Next.js Route Handler en Vercel) → Supabase
+ */
 
 // ─── TIPOS ────────────────────────────────────────────────────────────────────
 
@@ -20,6 +22,7 @@ export interface MaquinaDigital {
   ancho_mat_m: number;
   velocidades: Record<string, number>;
   activo: boolean;
+  updated_at?: string;
 }
 
 export interface MaquinaAnalog {
@@ -39,16 +42,13 @@ export interface MaquinaAnalog {
   embossing: boolean;
   puede_cupon: boolean;
   activo: boolean;
+  updated_at?: string;
 }
 
 export interface OverheadConfig {
   id: 'digital' | 'analog';
-  conceptos: Array<{
-    nombre: string;
-    mensual_usd: number;
-    pct: number;
-    n_maq: number;
-  }>;
+  conceptos: Array<{ nombre: string; mensual_usd: number; pct: number; n_maq: number }>;
+  updated_at?: string;
 }
 
 export interface ConfigCruces {
@@ -58,6 +58,7 @@ export interface ConfigCruces {
   factor_v12: number;
   gap_eje_mm: number;
   gap_des_mm: number;
+  updated_at?: string;
 }
 
 export interface Material {
@@ -76,116 +77,88 @@ export interface Acabado {
   activo: boolean;
 }
 
-// ─── HELPERS DE LECTURA ───────────────────────────────────────────────────────
+// ─── HELPERS INTERNOS ─────────────────────────────────────────────────────────
+
+async function dbGet<T>(table: string, params: Record<string, string> = {}): Promise<T> {
+  const qs = new URLSearchParams({ table, ...params }).toString();
+  const res = await fetch(`/api/db?${qs}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`DB GET ${table} → ${res.status}`);
+  return res.json();
+}
+
+async function dbPatch(table: string, id: string, data: Record<string, unknown>): Promise<void> {
+  const res = await fetch('/api/db', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ table, id, data }),
+  });
+  if (!res.ok) throw new Error(`DB PATCH ${table}:${id} → ${res.status}`);
+}
+
+async function dbPost(table: string, data: unknown, upsert = false): Promise<void> {
+  const res = await fetch('/api/db', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ table, data, upsert }),
+  });
+  if (!res.ok) throw new Error(`DB POST ${table} → ${res.status}`);
+}
+
+// ─── LECTURA ──────────────────────────────────────────────────────────────────
 
 export async function getMaquinasDigital(): Promise<MaquinaDigital[]> {
-  const { data, error } = await supabase
-    .from('maquinas_digital')
-    .select('*')
-    .eq('activo', true)
-    .order('id');
-  if (error) throw error;
-  return data ?? [];
+  return dbGet<MaquinaDigital[]>('maquinas_digital', { activo: 'true' });
 }
 
 export async function getMaquinasAnalog(): Promise<MaquinaAnalog[]> {
-  const { data, error } = await supabase
-    .from('maquinas_analog')
-    .select('*')
-    .eq('activo', true)
-    .order('id');
-  if (error) throw error;
-  return data ?? [];
+  return dbGet<MaquinaAnalog[]>('maquinas_analog', { activo: 'true' });
 }
 
 export async function getOverhead(tipo: 'digital' | 'analog'): Promise<OverheadConfig | null> {
-  const { data, error } = await supabase
-    .from('overhead_config')
-    .select('*')
-    .eq('id', tipo)
-    .single();
-  if (error) return null;
-  return data;
+  try { return await dbGet<OverheadConfig>('overhead_config', { eq_id: tipo, single: '1' }); }
+  catch { return null; }
 }
 
 export async function getConfigCruces(): Promise<ConfigCruces | null> {
-  const { data, error } = await supabase
-    .from('config_cruces')
-    .select('*')
-    .eq('id', 'default')
-    .single();
-  if (error) return null;
-  return data;
+  try { return await dbGet<ConfigCruces>('config_cruces', { eq_id: 'default', single: '1' }); }
+  catch { return null; }
 }
 
 export async function getMateriales(): Promise<Material[]> {
-  const { data, error } = await supabase
-    .from('materiales')
-    .select('*')
-    .eq('activo', true)
-    .order('nombre');
-  if (error) throw error;
-  return data ?? [];
+  return dbGet<Material[]>('materiales', { activo: 'true' });
 }
 
 export async function getAcabados(): Promise<Acabado[]> {
-  const { data, error } = await supabase
-    .from('acabados')
-    .select('*')
-    .eq('activo', true)
-    .order('nombre');
-  if (error) throw error;
-  return data ?? [];
+  return dbGet<Acabado[]>('acabados', { activo: 'true' });
 }
 
-// ─── HELPERS DE ESCRITURA ─────────────────────────────────────────────────────
+// ─── ESCRITURA ────────────────────────────────────────────────────────────────
 
 export async function updateMaquinaDigital(id: string, patch: Partial<MaquinaDigital>) {
-  const { error } = await supabase
-    .from('maquinas_digital')
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq('id', id);
-  if (error) throw error;
+  return dbPatch('maquinas_digital', id, patch as Record<string, unknown>);
 }
 
 export async function updateMaquinaAnalog(id: string, patch: Partial<MaquinaAnalog>) {
-  const { error } = await supabase
-    .from('maquinas_analog')
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq('id', id);
-  if (error) throw error;
+  return dbPatch('maquinas_analog', id, patch as Record<string, unknown>);
 }
 
 export async function updateOverhead(tipo: 'digital' | 'analog', conceptos: OverheadConfig['conceptos']) {
-  const { error } = await supabase
-    .from('overhead_config')
-    .update({ conceptos, updated_at: new Date().toISOString() })
-    .eq('id', tipo);
-  if (error) throw error;
+  return dbPatch('overhead_config', tipo, { conceptos });
 }
 
 export async function updateConfigCruces(patch: Partial<ConfigCruces>) {
-  const { error } = await supabase
-    .from('config_cruces')
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq('id', 'default');
-  if (error) throw error;
+  return dbPatch('config_cruces', 'default', patch as Record<string, unknown>);
 }
 
 export async function saveCotizacionRFQ(data: {
   rfq_html?: string;
-  eje_mm: number;
-  des_mm: number;
-  material?: string;
-  pm_usd: number;
-  tintas_dig: number;
-  tintas_off: number;
-  tintas_flex: number;
+  eje_mm: number; des_mm: number;
+  material?: string; pm_usd: number;
+  tintas_dig: number; tintas_off: number; tintas_flex: number;
   acabados: Record<string, boolean>;
   cantidades: number[];
   resultado: unknown;
   ingeniero?: string;
 }) {
-  const { error } = await supabase.from('cotizaciones_rfq').insert([data]);
-  if (error) throw error;
+  return dbPost('cotizaciones_rfq', data);
 }

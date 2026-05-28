@@ -5,6 +5,7 @@ import { FileUp, Settings, ChevronRight, AlertTriangle, CheckCircle2,
          RefreshCw, Save, Cpu, Layers, ArrowRight, Info } from 'lucide-react';
 import Link from 'next/link';
 import { getConfigCruces, getMaquinasDigital, getMaquinasAnalog,
+         updateConfigCruces, updateMaquinaDigital, updateMaquinaAnalog,
          ConfigCruces, MaquinaDigital, MaquinaAnalog } from '@/lib/supabase';
 
 // ─── TIPOS ────────────────────────────────────────────────────────────────────
@@ -681,7 +682,6 @@ function ConfigPanel({ cfg, setCfg, maqDig, maqAna, setMaqDig, setMaqAna, dbStat
   setMaqAna: (m: MaquinaAnalog[]) => void;
   dbStatus: 'loading' | 'ok' | 'fallback';
 }) {
-  const { updateConfigCruces, updateMaquinaDigital, updateMaquinaAnalog } = require('@/lib/supabase');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
