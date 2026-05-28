@@ -16,8 +16,8 @@ export const GAP_MIN_MM     = 2.5;            // gap mínimo entre etiquetas
 
 /** Puntos de cambio de tecnología (metros lineales). Editables en Supabase. */
 export const UMBRALES = {
-  metros_6mil_to_v12:          1200,   // 6K → V12
-  metros_digital_to_analog:    5000,   // Digital → Analógica
+  metros_6mil_to_v12:          1500,   // 6K → V12  (fuente: CERM calculadora rangos)
+  metros_digital_to_analog:    3000,   // Digital → Analógica (fuente: CERM)
 };
 
 // ─── MÁQUINAS DIGITALES ───────────────────────────────────────────────────────
@@ -359,22 +359,53 @@ export interface DatosEtiqueta {
 export interface Material {
   id: string;
   nombre: string;
-  categoria: 'BOPP' | 'PE' | 'PAPEL' | 'ESPECIAL';
+  categoria: 'BOPP' | 'PE' | 'PAPEL' | 'ESPECIAL' | 'VINO';
   // Restricciones técnicas por máquina
   // null = sin restricción, string = razón del rechazo
   restricciones: Partial<Record<string, string>>;
 }
 
 export const MATERIALES: Material[] = [
-  { id: 'bopp_blanco',   nombre: 'BOPP Blanco',       categoria: 'BOPP',   restricciones: {} },
-  { id: 'bopp_metal',    nombre: 'BOPP Metalizado',    categoria: 'BOPP',   restricciones: {} },
-  { id: 'bopp_trans',    nombre: 'BOPP Transparente',  categoria: 'BOPP',   restricciones: {} },
-  { id: 'bopp_pearl',    nombre: 'BOPP Perlado',       categoria: 'BOPP',   restricciones: {} },
-  { id: 'papel_couche',  nombre: 'Papel Couché',       categoria: 'PAPEL',  restricciones: {} },
-  { id: 'papel_kraft',   nombre: 'Papel Kraft',        categoria: 'PAPEL',  restricciones: {} },
-  { id: 'pe_blanco',     nombre: 'PE Blanco',          categoria: 'PE',     restricciones: {} },
-  { id: 'pe_metal',      nombre: 'PE Metalizado',      categoria: 'PE',     restricciones: {} },
-  { id: 'holografico',   nombre: 'Papel Holográfico',  categoria: 'ESPECIAL', restricciones: {} },
-  { id: 'dull_silver',   nombre: 'Dull Silver',        categoria: 'ESPECIAL', restricciones: {} },
-  { id: 'otro',          nombre: 'Otro / Especial',    categoria: 'ESPECIAL', restricciones: {} },
+  // ── BOPP ──────────────────────────────────────────────────────────────────
+  { id:'bopp_blanco',    nombre:'BOPP White',             categoria:'BOPP',    restricciones:{} },
+  { id:'bopp_clear',     nombre:'BOPP Clear',             categoria:'BOPP',    restricciones:{} },
+  { id:'bopp_metal',     nombre:'BOPP Metalizado',        categoria:'BOPP',    restricciones:{} },
+  { id:'bopp_pet',       nombre:'BOPP Clear C/PET',       categoria:'BOPP',    restricciones:{} },
+  { id:'bopp_hotmelt',   nombre:'BOPP White Hot Melt',    categoria:'BOPP',    restricciones:{} },
+  { id:'bopp_perlado',   nombre:'BOPP Perlado',           categoria:'BOPP',    restricciones:{} },
+  // ── PE ────────────────────────────────────────────────────────────────────
+  { id:'pe_blanco',      nombre:'PE White',               categoria:'PE',      restricciones:{} },
+  { id:'pe_clear',       nombre:'PE Clear',               categoria:'PE',      restricciones:{} },
+  { id:'pe_metal',       nombre:'PE Metalizado',          categoria:'PE',      restricciones:{} },
+  { id:'coex_bco',       nombre:'Global Coex Blanco',     categoria:'PE',      restricciones:{} },
+  { id:'coex_clear',     nombre:'Global Coex Clear',      categoria:'PE',      restricciones:{} },
+  // ── PAPEL ─────────────────────────────────────────────────────────────────
+  { id:'papel_couche',   nombre:'Couche',                 categoria:'PAPEL',   restricciones:{} },
+  { id:'papel_metal',    nombre:'Papel Metalizado',       categoria:'PAPEL',   restricciones:{} },
+  { id:'couche_adhesivo',nombre:'1096 Couche + Adhesivo', categoria:'PAPEL',   restricciones:{} },
+  { id:'couche_hotmelt', nombre:'Couche Hot Melt',        categoria:'PAPEL',   restricciones:{} },
+  // ── ESPECIALES ────────────────────────────────────────────────────────────
+  { id:'dull_silver',    nombre:'Dull Silver',            categoria:'ESPECIAL',restricciones:{} },
+  { id:'holografico',    nombre:'Papel Holográfico',      categoria:'ESPECIAL',restricciones:{} },
+  { id:'arud',           nombre:'Arud Indestructible',    categoria:'ESPECIAL',restricciones:{} },
+  // ── VINOS ─────────────────────────────────────────────────────────────────
+  { id:'vino_allure',    nombre:'Allure Diamond',         categoria:'VINO',    restricciones:{} },
+  { id:'vino_avon',      nombre:'Avon',                   categoria:'VINO',    restricciones:{} },
+  { id:'vino_avon_lin',  nombre:'Avon Linnen',            categoria:'VINO',    restricciones:{} },
+  { id:'vino_bella',     nombre:'Bella',                  categoria:'VINO',    restricciones:{} },
+  { id:'vino_bwf',       nombre:'Bright White Felt',      categoria:'VINO',    restricciones:{} },
+  { id:'vino_bwfi',      nombre:'Bright White Felt Impermeable', categoria:'VINO', restricciones:{} },
+  { id:'vino_egg',       nombre:'Eggshell',               categoria:'VINO',    restricciones:{} },
+  { id:'vino_est4',      nombre:'Estate 4',               categoria:'VINO',    restricciones:{} },
+  { id:'vino_est4i',     nombre:'Estate 4 Impermeable',   categoria:'VINO',    restricciones:{} },
+  { id:'vino_est8',      nombre:'Estate 8',               categoria:'VINO',    restricciones:{} },
+  { id:'vino_est8i',     nombre:'Estate 8 Impermeable',   categoria:'VINO',    restricciones:{} },
+  { id:'vino_est9',      nombre:'Estate 9',               categoria:'VINO',    restricciones:{} },
+  { id:'vino_kraft',     nombre:'Natural Kraft',          categoria:'VINO',    restricciones:{} },
+  { id:'vino_star',      nombre:'Star Constelation',      categoria:'VINO',    restricciones:{} },
+  { id:'vino_terra',     nombre:'Terra Skin',             categoria:'VINO',    restricciones:{} },
+  { id:'vino_vellum',    nombre:'Vellum',                 categoria:'VINO',    restricciones:{} },
+  { id:'vino_vellumi',   nombre:'Vellum Impermeable',     categoria:'VINO',    restricciones:{} },
+  // ── OTRO ──────────────────────────────────────────────────────────────────
+  { id:'otro',           nombre:'Otro / Especificar',     categoria:'ESPECIAL',restricciones:{} },
 ];

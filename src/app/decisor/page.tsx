@@ -146,7 +146,7 @@ function Diagrama({ eje_mm, des_mm, cav_eje, cav_des, gap_eje_mm, gap_des_mm, an
   gap_eje_mm: number; gap_des_mm: number; ancho_mm: number;
   tipo: 'digital'|'analog'; nombre: string;
 }) {
-  const W = 520, H = 230, PAD = 36;
+  const W = 560, H = 300, PAD = 40;
   const pw_r = tipo === 'digital' ? ancho_mm : (eje_mm * cav_eje + gap_eje_mm * (cav_eje + 1));
   const ph_r = (des_mm + gap_des_mm) * cav_des + gap_des_mm;
   const sc   = Math.min((W - PAD*2) / pw_r, (H - PAD*2) / ph_r);
@@ -351,7 +351,8 @@ function ResultadoPanel({ resultado, etiqueta }: { resultado: ResultadoAnalisis;
             <Ruler size={13} className="text-slate-500"/>
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Distribución en papel</span>
           </div>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          {/* Full-width diagram row — each takes half on md+, full on mobile */}
+          <div className={`grid gap-4 ${(bestDig?.cav_eje && bestAna?.cav_eje) ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
             {bestDig?.cav_eje&&(
               <Diagrama eje_mm={etiqueta.eje_mm} des_mm={etiqueta.des_mm}
                 cav_eje={bestDig.cav_eje!} cav_des={bestDig.cav_des!}
@@ -417,7 +418,15 @@ function Formulario({ initial, onAnalizar }: { initial: DatosEtiqueta; onAnaliza
       <Sec label="Material" icon={Package}>
         <select value={v.material_id} onChange={e=>{const m=MATERIALES.find(x=>x.id===e.target.value);setV(x=>({...x,material_id:e.target.value,material_nombre:m?.nombre??e.target.value}));}}
           className="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-orange-500/60">
-          {MATERIALES.map(m=><option key={m.id} value={m.id}>{m.nombre}</option>)}
+          {(['BOPP','PE','PAPEL','ESPECIAL','VINO'] as const).map(cat => {
+            const items = MATERIALES.filter(m => m.categoria === cat);
+            if (!items.length) return null;
+            return (
+              <optgroup key={cat} label={`── ${cat} ──`}>
+                {items.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+              </optgroup>
+            );
+          })}
         </select>
       </Sec>
       <Sec label="Tintas" icon={Palette}>
