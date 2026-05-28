@@ -462,6 +462,12 @@ export default function QuotationCalculatorPage() {
                 Algoritmo
               </button>
             </div>
+            <a
+              href="/rfq-analyzer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white transition-all ml-1"
+            >
+              RFQ →
+            </a>
           </div>
 
           <div className="flex items-center gap-2">
