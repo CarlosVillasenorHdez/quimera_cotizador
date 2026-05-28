@@ -51,8 +51,20 @@ export interface ResultadoAnalisis {
   no_viable: ResultadoMaquina[];
 
   // Puntos de cruce (en millares)
-  cruce_6mil_v12: number | null;       // metros → millar donde 6K → V12
-  cruce_digital_analog: number | null; // metros → millar donde digital → analógica
+  cruce_6mil_v12: number | null;
+  cruce_digital_analog: number | null;
+
+  // Explicación del cálculo de metros → millares
+  explicacion_metros: {
+    maquina_ref: string;
+    umbral_metros: number;
+    millares_resultado: number;
+    cav_eje: number;
+    cav_des: number;
+    cav_total: number;
+    frames_aprox: number;
+    metros_por_frame: number;
+  } | null;
 
   // Resumen ejecutivo
   resumen: string;
@@ -188,19 +200,20 @@ function evaluarAnalog(m: MaquinaAnalog, e: DatosEtiqueta): ResultadoMaquina {
     });
   }
 
-  // 3. Tintas offset
+  // 3. Tintas offset — si la máquina no tiene offset pero sí tiene suficiente flexo,
+  //    es viable como "opción con cambio" (no es bloqueo)
   if (e.tintas_proceso > 0 && m.cabezas_offset === 0) {
-    // Flexo puede sustituir offset en algunos casos
     if (m.cabezas_flexo >= e.tintas_proceso) {
+      // VIABLE con nota: flexo puede sustituir offset
       advertencias.push({
         codigo: 'OFFSET_A_FLEXO',
-        descripcion: `${m.nombre} no tiene offset. Las ${e.tintas_proceso} tintas deberían realizarse en flexo (verificar calidad con ingeniería)`,
+        descripcion: `Las ${e.tintas_proceso} tintas de proceso se realizarían en flexo (la máquina no tiene offset). Confirmar calidad con ingeniería.`,
         critico: false,
       });
     } else {
       rechazos.push({
-        codigo: 'SIN_OFFSET',
-        descripcion: `Requiere ${e.tintas_proceso} tintas offset, ${m.nombre} no tiene cabezas offset (solo ${m.cabezas_flexo} flexo)`,
+        codigo: 'SIN_OFFSET_NI_FLEXO',
+        descripcion: `Requiere ${e.tintas_proceso} tintas — ${m.nombre} solo tiene ${m.cabezas_flexo} cabezas flexo (sin offset)`,
         critico: true,
       });
     }
@@ -367,9 +380,32 @@ export function analizarEtiqueta(
   const resumen = generarResumen(e, viable_digital, viable_analog, cruce_6mil_v12, cruce_digital_analog);
   const recomendacion = generarRecomendacion(e, viable_digital, viable_analog, cruce_digital_analog);
 
+  // Calcular explicación del cruce digital→analógica
+  let explicacion_metros = null;
+  if (mCruce && cruce_digital_analog) {
+    const r1k = calcMetrosDigital(mCruce, e.eje_mm, e.des_mm, 1000);
+    if (r1k) {
+      const metros_por_frame = (mCruce.frame_cm - (e.des_mm / 10 + mCruce.gap_des_mm / 10) * r1k.cav_des * 0) / 100;
+      // Recalculate more precisely
+      const ani = mCruce.frame_cm - (e.des_mm / 10 + mCruce.gap_des_mm / 10) * r1k.cav_des;
+      const mpf = (mCruce.frame_cm - ani) / 100;
+      explicacion_metros = {
+        maquina_ref: mCruce.nombre,
+        umbral_metros: umbrales.metros_digital_to_analog,
+        millares_resultado: cruce_digital_analog,
+        cav_eje: r1k.cav_eje,
+        cav_des: r1k.cav_des,
+        cav_total: r1k.cav_eje * r1k.cav_des,
+        frames_aprox: Math.ceil(cruce_digital_analog * 1000 / (r1k.cav_eje * r1k.cav_des)),
+        metros_por_frame: parseFloat(mpf.toFixed(4)),
+      };
+    }
+  }
+
   return {
     viable_digital, viable_analog, no_viable,
     cruce_6mil_v12, cruce_digital_analog,
+    explicacion_metros,
     resumen, recomendacion_principal: recomendacion,
     mapa_cantidades,
   };

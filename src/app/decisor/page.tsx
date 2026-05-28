@@ -175,11 +175,217 @@ function MachineCard({ r }: { r: ResultadoMaquina }) {
   );
 }
 
+// ─── DIAGRAMA DE CAVIDADES (SVG) ─────────────────────────────────────────────
+
+function DiagramaCavidades({
+  eje_mm, des_mm, cav_eje, cav_des, gap_eje_mm, gap_des_mm,
+  ancho_papel_mm, tipo, nombre,
+}: {
+  eje_mm: number; des_mm: number; cav_eje: number; cav_des: number;
+  gap_eje_mm: number; gap_des_mm: number;
+  ancho_papel_mm: number;   // ancho total del rollo
+  tipo: 'digital' | 'analog';
+  nombre: string;
+}) {
+  // SVG canvas dimensions
+  const W = 480, H = 260;
+  const PAD = 28;
+
+  // Scale: fit the paper width into the SVG
+  const papel_w_real = tipo === 'digital' ? ancho_papel_mm : (eje_mm * cav_eje + gap_eje_mm * (cav_eje + 1));
+  const papel_h_real = (des_mm + gap_des_mm) * cav_des + gap_des_mm;
+
+  const scaleX = (W - PAD * 2) / papel_w_real;
+  const scaleY = (H - PAD * 2) / papel_h_real;
+  const scale  = Math.min(scaleX, scaleY);
+
+  const pw = papel_w_real * scale;
+  const ph = papel_h_real * scale;
+  const ox = (W - pw) / 2;
+  const oy = (H - ph) / 2;
+
+  const ew = eje_mm * scale;
+  const eh = des_mm * scale;
+  const ge = gap_eje_mm * scale;
+  const gd = gap_des_mm * scale;
+
+  const digitColor  = '#3B82F6';
+  const analogColor = '#14B8A6';
+  const color = tipo === 'digital' ? digitColor : analogColor;
+
+  // Generate label rects
+  const labels: { x: number; y: number }[] = [];
+  for (let row = 0; row < cav_des; row++) {
+    for (let col = 0; col < cav_eje; col++) {
+      const x = ox + ge + col * (ew + ge);
+      const y = oy + gd + row * (eh + gd);
+      labels.push({ x, y });
+    }
+  }
+
+  return (
+    <div>
+      <div className="text-xs text-slate-500 mb-2 flex items-center justify-between">
+        <span>{nombre} · {cav_eje} × {cav_des} = {cav_eje * cav_des} cavidades / frame</span>
+        <span className="font-mono">Papel: {ancho_papel_mm}mm × {papel_h_real.toFixed(1)}mm</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-xl border border-slate-700/50 bg-slate-900/60">
+        {/* Paper background */}
+        <rect x={ox} y={oy} width={pw} height={ph}
+          fill={tipo === 'digital' ? '#1e293b' : '#0f2027'} stroke="#475569" strokeWidth={1} rx={2} />
+
+        {/* Dimension arrows — paper width */}
+        <line x1={ox} y1={oy - 14} x2={ox + pw} y2={oy - 14} stroke="#64748b" strokeWidth={1} />
+        <line x1={ox} y1={oy - 19} x2={ox} y2={oy - 9} stroke="#64748b" strokeWidth={1} />
+        <line x1={ox + pw} y1={oy - 19} x2={ox + pw} y2={oy - 9} stroke="#64748b" strokeWidth={1} />
+        <text x={(ox + ox + pw) / 2} y={oy - 18} fill="#94a3b8" fontSize={9} textAnchor="middle">
+          {papel_w_real.toFixed(1)} mm {tipo === 'digital' ? '(planilla)' : '(bobina)'}
+        </text>
+
+        {/* Dimension arrows — paper height */}
+        <line x1={ox + pw + 14} y1={oy} x2={ox + pw + 14} y2={oy + ph} stroke="#64748b" strokeWidth={1} />
+        <line x1={ox + pw + 9} y1={oy} x2={ox + pw + 19} y2={oy} stroke="#64748b" strokeWidth={1} />
+        <line x1={ox + pw + 9} y1={oy + ph} x2={ox + pw + 19} y2={oy + ph} stroke="#64748b" strokeWidth={1} />
+        <text x={ox + pw + 22} y={(oy + oy + ph) / 2} fill="#94a3b8" fontSize={9}
+          textAnchor="start" dominantBaseline="middle" transform={`rotate(90,${ox+pw+22},${(oy+oy+ph)/2})`}>
+          {papel_h_real.toFixed(1)} mm
+        </text>
+
+        {/* Labels */}
+        {labels.map(({ x, y }, i) => (
+          <g key={i}>
+            <rect x={x} y={y} width={ew} height={eh}
+              fill={color + '26'} stroke={color} strokeWidth={1.2} rx={2} />
+            {i === 0 && (
+              <>
+                {/* Eje dimension */}
+                <line x1={x} y1={y + eh + 6} x2={x + ew} y2={y + eh + 6} stroke={color} strokeWidth={0.8} opacity={0.6} />
+                <text x={x + ew / 2} y={y + eh + 15} fill={color} fontSize={8} textAnchor="middle" opacity={0.9}>
+                  {eje_mm}mm
+                </text>
+                {/* Des dimension */}
+                <line x1={x - 6} y1={y} x2={x - 6} y2={y + eh} stroke={color} strokeWidth={0.8} opacity={0.6} />
+                <text x={x - 9} y={y + eh / 2} fill={color} fontSize={8}
+                  textAnchor="middle" dominantBaseline="middle"
+                  transform={`rotate(-90,${x-9},${y+eh/2})`} opacity={0.9}>
+                  {des_mm}mm
+                </text>
+              </>
+            )}
+          </g>
+        ))}
+
+        {/* Gap indicators — first row, between first two labels if cav_eje > 1 */}
+        {cav_eje > 1 && labels.length >= 2 && (
+          <>
+            <line x1={labels[0].x + ew} y1={labels[0].y + eh / 2}
+              x2={labels[1].x} y2={labels[1].y + eh / 2}
+              stroke="#f59e0b" strokeWidth={1} strokeDasharray="3,2" opacity={0.7} />
+            <text x={(labels[0].x + ew + labels[1].x) / 2}
+              y={labels[0].y + eh / 2 - 4}
+              fill="#f59e0b" fontSize={7.5} textAnchor="middle" opacity={0.85}>
+              {gap_eje_mm}mm
+            </text>
+          </>
+        )}
+        {cav_des > 1 && labels.length >= cav_eje + 1 && (
+          <>
+            <line x1={labels[0].x + ew / 2} y1={labels[0].y + eh}
+              x2={labels[cav_eje].x + ew / 2} y2={labels[cav_eje].y}
+              stroke="#f59e0b" strokeWidth={1} strokeDasharray="3,2" opacity={0.7} />
+            <text x={labels[0].x + ew / 2 + 5}
+              y={(labels[0].y + eh + labels[cav_eje].y) / 2}
+              fill="#f59e0b" fontSize={7.5} textAnchor="start" dominantBaseline="middle" opacity={0.85}>
+              {gap_des_mm}mm
+            </text>
+          </>
+        )}
+
+        {/* Label count badge */}
+        <rect x={W - 90} y={H - 24} width={82} height={18} rx={4}
+          fill={color + '20'} stroke={color + '50'} />
+        <text x={W - 49} y={H - 12} fill={color} fontSize={9} textAnchor="middle" fontWeight="600">
+          {cav_eje * cav_des} etiq/frame
+        </text>
+      </svg>
+    </div>
+  );
+}
+
+// ─── EXPLICACIÓN METROS → MILLARES ───────────────────────────────────────────
+
+function ExplicacionMetros({ exp, umbral_label }: {
+  exp: NonNullable<ResultadoAnalisis['explicacion_metros']>;
+  umbral_label: string;
+}) {
+  return (
+    <div className="bg-slate-800/50 border border-slate-700/40 rounded-xl p-4 text-xs space-y-3">
+      <div className="text-slate-300 font-semibold text-sm mb-1">
+        ¿Por qué el cambio ocurre en {exp.millares_resultado.toLocaleString()}k piezas?
+      </div>
+
+      <div className="space-y-1.5 text-slate-400">
+        <div className="flex gap-2">
+          <span className="text-slate-500 shrink-0">1.</span>
+          <span>
+            En <strong className="text-slate-200">{exp.maquina_ref}</strong> con esta etiqueta caben{' '}
+            <strong className="text-orange-300">{exp.cav_eje} × {exp.cav_des} = {exp.cav_total} etiquetas por frame</strong>.
+          </span>
+        </div>
+        <div className="flex gap-2">
+          <span className="text-slate-500 shrink-0">2.</span>
+          <span>
+            Para producir <strong className="text-slate-200">{exp.millares_resultado.toLocaleString()}k piezas</strong> se necesitan{' '}
+            ≈ <strong className="text-orange-300">{exp.frames_aprox.toLocaleString()} frames</strong>.
+          </span>
+        </div>
+        <div className="flex gap-2">
+          <span className="text-slate-500 shrink-0">3.</span>
+          <span>
+            Cada frame avanza <strong className="text-orange-300">{exp.metros_por_frame.toFixed(4)} m</strong> de papel.
+          </span>
+        </div>
+        <div className="flex gap-2">
+          <span className="text-slate-500 shrink-0">4.</span>
+          <span>
+            Total: {exp.frames_aprox.toLocaleString()} frames × {exp.metros_por_frame.toFixed(4)} m
+            {' '}≈ <strong className="text-teal-300">{exp.umbral_metros.toLocaleString()} metros lineales</strong>{' '}
+            → umbral configurado para {umbral_label}.
+          </span>
+        </div>
+      </div>
+
+      <div className="bg-slate-900/60 rounded-lg px-3 py-2 text-slate-400 leading-relaxed">
+        El umbral de <strong className="text-teal-300">{exp.umbral_metros.toLocaleString()} metros</strong> es el punto
+        donde el volumen de producción hace más eficiente cambiar de tecnología.
+        Este valor es ajustable en <strong className="text-slate-300">Parámetros</strong>.
+      </div>
+    </div>
+  );
+}
+
 // ─── RESULTADO COMPLETO ───────────────────────────────────────────────────────
 
 function ResultPanel({ resultado, etiqueta }: { resultado: ResultadoAnalisis; etiqueta: DatosEtiqueta }) {
+  // Viable = machines that can do the job (including offset→flexo options)
   const allViable = [...resultado.viable_digital, ...resultado.viable_analog];
-  const totalNoViable = resultado.no_viable.length;
+
+  // No viable = truly blocked machines
+  // Only show analog no-viable if the reason is NO_CYLINDER (interesting for engineering)
+  // Hide if it's just a capability mismatch the engineer already knows
+  const noViableMostrar = resultado.no_viable.filter(r => {
+    const codes = r.rechazos.map(x => x.codigo);
+    // Always show if no cylinder — that's useful info
+    if (codes.includes('SIN_CILINDRO')) return true;
+    // Show digital if dimension mismatch
+    if (r.tipo === 'digital' && codes.some(c => ['EJE_FUERA','DES_FUERA','SIN_PLATA'].includes(c))) return true;
+    // Hide pure capability rejections (no screen, no HS, etc.) — engineer knows
+    return false;
+  });
+
+  // Best digital machine for diagram
+  const bestDig = resultado.viable_digital[0];
+  const bestAna = resultado.viable_analog[0];
 
   return (
     <div className="space-y-5" id="resultado-panel">
@@ -231,47 +437,66 @@ function ResultPanel({ resultado, etiqueta }: { resultado: ResultadoAnalisis; et
         </div>
       )}
 
+      {/* Explicación del cálculo de metros */}
+      {resultado.explicacion_metros && (
+        <ExplicacionMetros
+          exp={resultado.explicacion_metros}
+          umbral_label="el cambio a analógica"
+        />
+      )}
+
       {/* Máquinas viables */}
       {allViable.length > 0 && (
-        <Collapsible title="Máquinas viables" icon={CheckCircle}
+        <Collapsible title="Máquinas recomendadas" icon={CheckCircle}
           badge={<Tag color="green">{allViable.length}</Tag>}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
             {allViable.map(r => <MachineCard key={r.id} r={r} />)}
           </div>
-        </Collapsible>
-      )}
 
-      {/* Máquinas no viables */}
-      {totalNoViable > 0 && (
-        <Collapsible title="Máquinas no viables" icon={XCircle} defaultOpen={false}
-          badge={<Tag color="red">{totalNoViable}</Tag>}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {resultado.no_viable.map(r => <MachineCard key={r.id} r={r} />)}
-          </div>
-        </Collapsible>
-      )}
-
-      {/* Mapa de cantidades */}
-      {resultado.mapa_cantidades.length > 0 && (
-        <Collapsible title="Qué ingresar en CERM por escala" icon={ArrowRight}>
-          <div className="space-y-2">
-            {resultado.mapa_cantidades.map(m => (
-              <div key={m.cantidad} className="flex items-start justify-between gap-4
-                bg-slate-800/60 rounded-xl px-4 py-3">
-                <div>
-                  <div className="text-sm font-bold text-slate-200">{m.cantidad.toLocaleString()} pzas</div>
-                  <div className="text-xs text-slate-500 mt-0.5">{m.justificacion}</div>
+          {/* Diagramas de cavidades */}
+          <div className="space-y-4">
+            {bestDig?.cav_eje && (
+              <div>
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                  Distribución en planilla — {bestDig.nombre}
                 </div>
-                <div className="shrink-0 flex items-center gap-2">
-                  <Tag color={m.tipo === 'digital' ? 'blue' : 'teal'}>{m.maquina_nombre}</Tag>
-                </div>
+                <DiagramaCavidades
+                  eje_mm={etiqueta.eje_mm} des_mm={etiqueta.des_mm}
+                  cav_eje={bestDig.cav_eje!} cav_des={bestDig.cav_des!}
+                  gap_eje_mm={3} gap_des_mm={3}
+                  ancho_papel_mm={
+                    bestDig.id === '20MIL' ? 714 :
+                    bestDig.id === 'V12'   ? 313 : 317
+                  }
+                  tipo="digital" nombre={bestDig.nombre}
+                />
               </div>
-            ))}
+            )}
+            {bestAna?.cav_eje && (
+              <div>
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                  Distribución en bobina — {bestAna.nombre}
+                </div>
+                <DiagramaCavidades
+                  eje_mm={etiqueta.eje_mm} des_mm={etiqueta.des_mm}
+                  cav_eje={bestAna.cav_eje!} cav_des={bestAna.cav_des!}
+                  gap_eje_mm={3} gap_des_mm={bestAna.cilindro_gap_mm ?? 3}
+                  ancho_papel_mm={etiqueta.eje_mm * bestAna.cav_eje! + 3 * (bestAna.cav_eje! + 1)}
+                  tipo="analog" nombre={bestAna.nombre}
+                />
+              </div>
+            )}
           </div>
-          <p className="text-xs text-slate-600 mt-3 flex items-center gap-1.5">
-            <Info size={11} />
-            El ingeniero decide el ajuste final antes de ingresar a CERM.
-          </p>
+        </Collapsible>
+      )}
+
+      {/* No viables — solo casos técnicamente interesantes */}
+      {noViableMostrar.length > 0 && (
+        <Collapsible title="Restricciones técnicas relevantes" icon={AlertTriangle} defaultOpen={false}
+          badge={<Tag color="amber">{noViableMostrar.length}</Tag>}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {noViableMostrar.map(r => <MachineCard key={r.id} r={r} />)}
+          </div>
         </Collapsible>
       )}
     </div>

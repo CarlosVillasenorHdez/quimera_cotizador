@@ -168,7 +168,7 @@ export const MAQUINAS_ANALOG: MaquinaAnalog[] = [
   },
   {
     id: 'GAL1',
-    nombre: 'Galería 1',
+    nombre: 'Gallus 1',
     ancho_max_mm: 254.0,
     gap_eje_mm: 3,
     gap_des_max_mm: 13.0,
