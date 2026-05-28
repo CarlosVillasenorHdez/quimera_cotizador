@@ -73,6 +73,7 @@ export interface DigitalCostResult {
   costo_laminado_usd: number;
   costo_cei_usd: number;
   costo_omega_usd: number;
+  costo_estampador_usd: number;
   costo_gtos_grales_usd: number;
   costo_gtos_direccion_usd: number;
   costo_envios_usd: number;
@@ -431,7 +432,9 @@ export function calcularCostoDigital(
   const maqKey = machine.id;
   const maqData = MAQUINAS_DIGITAL[maqKey] ?? MAQUINAS_DIGITAL['6MIL'];
 
-  const planilla_cm = machineParams?.planilla_cm ?? maqData.planilla_cm;
+  const planilla_cm = machineParams?.ancho_13_mm != null
+    ? machineParams.ancho_13_mm / 10
+    : maqData.planilla_cm;
   const frame_largo_cm = machineParams?.frame_largo_cm ?? maqData.frame_largo_cm;
   const setup_metros = machineParams?.setup_metros ?? maqData.setup_metros;
 
@@ -559,7 +562,13 @@ export function calcularCostoDigital(
 
   const costo_acabados_usd = costo_laminado_usd + costo_otros_acabados;
 
-  // ── PASO 8: TIEMPO DE IMPRESIÓN Y COSTO HP ────────────────────────────────
+  // ── PASO 8: TIEMPO DE IMPRESIÓN, COSTO HP Y MO LABOR ──────────────────────
+  // Fuente: DIGITAL sheet B8 (velocidad) y B6 (MO/HRA)
+  // N4 = (J4/B8) × (1+(1-efic))² = metros_imp/vel × efic_factor²
+  // O4 = (N4/60)*B4 + terminados  → HP cost (costo_hp_usd)
+  // MO labor: (N4/60)*B6 → $2.718/hr aplicado sobre tiempo real de impresión (N8)
+  //   Fuente: DIGITAL!B6 = MO/HRA DE IMPRESION = $2.718/hr
+  //   VERIFICADO: presente en O4 formula del Excel QUIMERA_MAS_HYDRA
   const speedMap = speedTable?.[machine.id] ?? VELOCIDADES_DIGITAL[machine.id] ?? maqData.velocidades_m_min;
   const vel_key = Math.min(Math.max(tintas_ef, 1), 10);
   const velocidad_efectiva = speedMap[vel_key] ?? speedMap[7] ?? 20;
@@ -568,35 +577,55 @@ export function calcularCostoDigital(
     razones_falla.push('Velocidad efectiva es 0');
   }
 
-  // CRÍTICO: factor de eficiencia doble aplicado al tiempo
-  // VERIFICADO: 25755/31 * (1+0.15)^2 = 1098.75 min ✓
+  // N4 = (metros_imp / velocidad) × (1+(1-efic))²
   const M4_tiempo_min = velocidad_efectiva > 0
     ? (metros_imp / velocidad_efectiva) * Math.pow(1 + (1 - efic), 2)
     : 0;
 
-  // cobro_minimo = maqData.cobro_minimo_min (10 min para digitales)
   const cobro_minimo_min = maqData.cobro_minimo_min;
   const cobro_minimo_activo = M4_tiempo_min > 0 && M4_tiempo_min < cobro_minimo_min;
   const tiempo_cobrar_min = Math.max(M4_tiempo_min, cobro_minimo_min);
-  // horas_impresion_reales = M4_tiempo_min / 60 (horas REALES, no cobro mínimo)
-  const horas_impresion_reales = M4_tiempo_min / 60;
+  const horas_impresion_reales = M4_tiempo_min / 60;  // N8 = horas reales
 
-  // VERIFICADO: MAX(1098.75, 10)/60 * 74.167 = $1,358.18 ✓
   const costo_hr_hp = COSTO_HR_IMPRESION[machine.id] ?? maqData.costo_hr_impresion;
   const costo_hp_usd = job.num_tintas === 0 ? 0 : (tiempo_cobrar_min / 60) * costo_hr_hp;
   const costo_overhead_usd = costo_hp_usd;
 
+  // MO labor sobre tiempo real de impresión (B6 del DIGITAL sheet = $2.718/hr)
+  // Fuente DIGITAL!O4 formula: (N4/60)*B6 + terminados
+  const COSTO_MO_LABOR_HR = 2.718;  // USD/hr — DIGITAL!B6
+  const costo_mo_labor_usd = horas_impresion_reales * COSTO_MO_LABOR_HR;
+
   const tiempo_hrs = tiempo_cobrar_min / 60;
   const tiempo_hrs_real = horas_impresion_reales;
 
-  // ── PASO 9: OMEGA (post-proceso) ──────────────────────────────────────────
-  // VERIFICADO: (30 + 25755/25/0.85) * 1 = 1242.01 min → MAX(1242,60)/60*14.236 = $294.69 ✓
+  // ── PASO 9: OMEGA y ESTAMPADOR (post-procesos) ────────────────────────────
+  // Omega: E43 = (MAQUINAS!B33 + J4/MAQUINAS!C33/efic) × pasos
+  //        F43 = IF(E43<60, 14.236, E43×14.236/60)
+  // VERIFICADO: (30 + 25755/25/0.85) × 1 = 1242.01 min → $294.69 ✓
+  //
+  // Estampador: E48 = (MAQUINAS!B36 + J4/MAQUINAS!C36) × H46  (SIN /efic)
+  //             F48 = IF(E48<60, 7.118, E48×7.118/60)
+  //   MAQUINAS!B36=setup=30min, MAQUINAS!C36=vel=10m/min
+  //   H46 = pasos_estampador (from ETIQUETA!B47 via hot_stamping logic)
   let metros_omega = 0;
   let costo_omega_usd = 0;
   if (job.pasos_omega > 0) {
     const tiempo_omega_min = (GLOBAL.omega.setup_min + (metros_imp / GLOBAL.omega.vel_m_min / efic)) * job.pasos_omega;
     costo_omega_usd = Math.max(tiempo_omega_min, GLOBAL.omega.cobro_min_min) / 60 * GLOBAL.omega.costo_hr;
     metros_omega = metros_imp;
+  }
+
+  // Estampador GM: setup=30min, vel=10m/min (SIN /efic), cobro_min=60, rate=$7.118/hr
+  // Fuente: MAQUINAS!B36-F36 y DIGITAL!E48/F48
+  let costo_estampador_usd = 0;
+  if (job.pasos_estampador > 0) {
+    const ESTAMPADOR_SETUP_MIN = 30;
+    const ESTAMPADOR_VEL_M_MIN = 10;   // MAQUINAS!C36 — NO usa /efic
+    const ESTAMPADOR_COSTO_HR  = 7.118; // DIGITAL!B48
+    const ESTAMPADOR_COBRO_MIN = 60;
+    const tiempo_stamp_min = (ESTAMPADOR_SETUP_MIN + metros_imp / ESTAMPADOR_VEL_M_MIN) * job.pasos_estampador;
+    costo_estampador_usd = Math.max(tiempo_stamp_min, ESTAMPADOR_COBRO_MIN) / 60 * ESTAMPADOR_COSTO_HR;
   }
 
   // ── PASO 10: CEI (rebobinadora) ────────────────────────────────────────────
@@ -607,33 +636,18 @@ export function calcularCostoDigital(
 
   const costo_mo_usd = costo_cei_usd;
 
-  // ── PASO 11: OVERHEAD (gtos_grales + gtos_dir) ────────────────────────────
-  // Fuente: parametros sheet, hoja "6 MIL" L62 y L63.
-  // POR_METRO: m2_netos × tasa_m2  |  POR_HORA: hr_real × tasa_hr (col N del Excel)
-  //
-  // CORRECCIÓN vs versión anterior: en POR_HORA gtos_dir usaba K33=0.091 (tasa m²)
-  // en lugar de N33=15.199 (tasa hora). Ahora usa la tasa horaria correcta.
-  //
-  //   POR_METRO: gg+dep+sis = 6000×0.319=$1,914 ✓  |  dir = 6000×0.091=$546 ✓
-  //   POR_HORA:  gg+dep+sis = hr×53.311        ✓  |  dir = hr×15.199      ✓
+  // ── PASO 11: OVERHEAD (gtos_grales + gtos_dir) ── POR HORA ────────────────
+  // Siempre POR HORA. Fuente: hoja "6 MIL" L62 y L63.
+  //   L62 = hr × (N30+N31+N34) = hr × (43.257+4.910+5.144) = hr × 53.311
+  //   L63 = N8 × '6MIL'!K33 = hr × barniz_price = 0 (sin barniz → gtos_dir = 0)
+  // Override manual del usuario sigue disponible vía overrideUsdHr.
   let costo_gtos_grales_usd = 0;
   let costo_gtos_direccion_usd = 0;
 
-  const modo = job.modo_costo === 'hora' ? 'POR_HORA' : 'POR_METRO';
-
   if (overrideUsdHr !== undefined) {
-    if (modo === 'POR_METRO') {
-      const oh = GLOBAL.overhead_digital_por_m2;
-      costo_gtos_grales_usd    = m2_netos * (oh.gastos_grales + oh.depreciaciones + oh.gastos_sistemas);
-      costo_gtos_direccion_usd = m2_netos * oh.gtos_direccion;
-    } else {
-      costo_gtos_grales_usd    = 0;
-      costo_gtos_direccion_usd = 0;
-    }
-  } else if (modo === 'POR_METRO') {
-    const oh = GLOBAL.overhead_digital_por_m2;
-    costo_gtos_grales_usd    = m2_netos * (oh.gastos_grales + oh.depreciaciones + oh.gastos_sistemas);
-    costo_gtos_direccion_usd = m2_netos * oh.gtos_direccion;
+    // Override: aplicar tasa personalizada sobre horas reales
+    costo_gtos_grales_usd    = 0;
+    costo_gtos_direccion_usd = 0;
   } else {
     // POR_HORA — fee = gasto × pct_digital ÷ n_maquinas ÷ horas_mes
     const n_maq_dig = params.n_maquinas_digitales ?? 14;
@@ -641,11 +655,9 @@ export function calcularCostoDigital(
     const fee_hr_gg  = 176490 * 0.70 / n_maq_dig / horas_mes;  // 43.257 ✓
     const fee_hr_dep = 20034  * 0.70 / n_maq_dig / horas_mes;  // 4.910  ✓
     const fee_hr_sis = 20988  * 0.70 / n_maq_dig / horas_mes;  // 5.144  ✓
-    // L62 POR_HORA: hr × (gg+dep+sis) = hr × 53.311
+    // L62: hr × (gg+dep+sis) = hr × 53.311
     costo_gtos_grales_usd    = horas_impresion_reales * (fee_hr_gg + fee_hr_dep + fee_hr_sis);
-    // L63 POR_HORA = N8 × '6MIL'!K33 donde K33 en la hoja 6MIL es el precio
-    // de barniz 3 (=0 cuando no hay barniz). El Excel NO cobra gtos_dir por hora.
-    // Verificado: L63=0 con parametros!D26="POR HORA", COSTO_TOTAL=$18,070.38 ✓
+    // L63 = 0: gtos_dir no se cobra en POR_HORA (K33_local = barniz_price = 0)
     costo_gtos_direccion_usd = 0;
   }
 
@@ -665,16 +677,11 @@ export function calcularCostoDigital(
     );
   }
 
-  // ── PASO 13: MO OVERHEAD ──────────────────────────────────────────────────
-  // L58 del Excel: MO overhead por máquina.
-  // POR_METRO: m2_netos × 0.119 = 6000 × 0.119 = $714 ✓
-  // POR_HORA:  hr_real × fee_hr_mo = hr × 19.875 ✓  (N32 = 81090×0.70÷14÷204)
+  // ── PASO 13: MO OVERHEAD ── POR HORA ─────────────────────────────────────
+  // L58 = N32 × N8 = 19.875 × horas_reales  (N32 = 81090×0.70÷14÷204)
   let costo_mo_overhead_usd = 0;
   if (overrideUsdHr !== undefined) {
     costo_mo_overhead_usd = horas_impresion_reales * overrideUsdHr;
-  } else if (modo === 'POR_METRO') {
-    // L58 POR_METRO: m2_netos × 0.119 = $714 ✓
-    costo_mo_overhead_usd = m2_netos * GLOBAL.overhead_digital_por_m2.mano_obra;
   } else {
     // L58 POR_HORA: hr × fee_hr_mo (N32 = 19.875) ✓
     const n_maq_dig = params.n_maquinas_digitales ?? 14;
@@ -687,9 +694,11 @@ export function calcularCostoDigital(
     + costo_tinta_usd
     + costo_acabados_usd
     + costo_hp_usd
+    + costo_mo_labor_usd    // MO labor impresión (B6=$2.718/hr × horas_reales)
     + costo_mo_usd          // CEI rebobinadora
-    + costo_mo_overhead_usd // MO overhead (m2_netos * 0.119)
+    + costo_mo_overhead_usd // MO overhead (hr × 19.875)
     + costo_omega_usd
+    + costo_estampador_usd  // Estampador GM (si pasos_estampador > 0)
     + costo_gtos_grales_usd
     + costo_gtos_direccion_usd
     + costo_envios_usd;
@@ -773,6 +782,7 @@ export function calcularCostoDigital(
     costo_laminado_usd,
     costo_cei_usd,
     costo_omega_usd,
+    costo_estampador_usd,
     costo_gtos_grales_usd,
     costo_gtos_direccion_usd,
     costo_envios_usd,
