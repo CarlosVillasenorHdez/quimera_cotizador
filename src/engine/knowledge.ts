@@ -310,14 +310,17 @@ export function buscarCruceDigital(
   des_mm: number,
   metros_umbral: number
 ): number | null {
-  let lo = 100, hi = 20_000_000, best: number | null = null;
+  // Busca en MILLARES directamente para evitar que CEIL(piezas/1000)
+  // devuelva un millar que ya supera el umbral.
+  // Resultado: mayor K (millares) donde metros(K*1000) <= metros_umbral
+  let lo = 1, hi = 20_000, best: number | null = null;
   for (let i = 0; i < 64; i++) {
     const mid = Math.floor((lo + hi) / 2);
-    const r = calcMetrosDigital(m, eje_mm, des_mm, mid);
+    const r = calcMetrosDigital(m, eje_mm, des_mm, mid * 1000);
     if (!r) break;
     if (r.metros <= metros_umbral) { best = mid; lo = mid + 1; } else hi = mid - 1;
   }
-  return best ? Math.ceil(best / 1000) : null;
+  return best;
 }
 
 // ─── DATOS DE ENTRADA ─────────────────────────────────────────────────────────
@@ -366,46 +369,46 @@ export interface Material {
 }
 
 export const MATERIALES: Material[] = [
-  // ── BOPP ──────────────────────────────────────────────────────────────────
-  { id:'bopp_blanco',    nombre:'BOPP White',             categoria:'BOPP',    restricciones:{} },
-  { id:'bopp_clear',     nombre:'BOPP Clear',             categoria:'BOPP',    restricciones:{} },
-  { id:'bopp_metal',     nombre:'BOPP Metalizado',        categoria:'BOPP',    restricciones:{} },
-  { id:'bopp_pet',       nombre:'BOPP Clear C/PET',       categoria:'BOPP',    restricciones:{} },
-  { id:'bopp_hotmelt',   nombre:'BOPP White Hot Melt',    categoria:'BOPP',    restricciones:{} },
-  { id:'bopp_perlado',   nombre:'BOPP Perlado',           categoria:'BOPP',    restricciones:{} },
-  // ── PE ────────────────────────────────────────────────────────────────────
-  { id:'pe_blanco',      nombre:'PE White',               categoria:'PE',      restricciones:{} },
-  { id:'pe_clear',       nombre:'PE Clear',               categoria:'PE',      restricciones:{} },
-  { id:'pe_metal',       nombre:'PE Metalizado',          categoria:'PE',      restricciones:{} },
-  { id:'coex_bco',       nombre:'Global Coex Blanco',     categoria:'PE',      restricciones:{} },
-  { id:'coex_clear',     nombre:'Global Coex Clear',      categoria:'PE',      restricciones:{} },
   // ── PAPEL ─────────────────────────────────────────────────────────────────
-  { id:'papel_couche',   nombre:'Couche',                 categoria:'PAPEL',   restricciones:{} },
-  { id:'papel_metal',    nombre:'Papel Metalizado',       categoria:'PAPEL',   restricciones:{} },
-  { id:'couche_adhesivo',nombre:'1096 Couche + Adhesivo', categoria:'PAPEL',   restricciones:{} },
-  { id:'couche_hotmelt', nombre:'Couche Hot Melt',        categoria:'PAPEL',   restricciones:{} },
-  // ── ESPECIALES ────────────────────────────────────────────────────────────
-  { id:'dull_silver',    nombre:'Dull Silver',            categoria:'ESPECIAL',restricciones:{} },
-  { id:'holografico',    nombre:'Papel Holográfico',      categoria:'ESPECIAL',restricciones:{} },
-  { id:'arud',           nombre:'Arud Indestructible',    categoria:'ESPECIAL',restricciones:{} },
-  // ── VINOS ─────────────────────────────────────────────────────────────────
-  { id:'vino_allure',    nombre:'Allure Diamond',         categoria:'VINO',    restricciones:{} },
-  { id:'vino_avon',      nombre:'Avon',                   categoria:'VINO',    restricciones:{} },
-  { id:'vino_avon_lin',  nombre:'Avon Linnen',            categoria:'VINO',    restricciones:{} },
-  { id:'vino_bella',     nombre:'Bella',                  categoria:'VINO',    restricciones:{} },
-  { id:'vino_bwf',       nombre:'Bright White Felt',      categoria:'VINO',    restricciones:{} },
-  { id:'vino_bwfi',      nombre:'Bright White Felt Impermeable', categoria:'VINO', restricciones:{} },
-  { id:'vino_egg',       nombre:'Eggshell',               categoria:'VINO',    restricciones:{} },
-  { id:'vino_est4',      nombre:'Estate 4',               categoria:'VINO',    restricciones:{} },
-  { id:'vino_est4i',     nombre:'Estate 4 Impermeable',   categoria:'VINO',    restricciones:{} },
-  { id:'vino_est8',      nombre:'Estate 8',               categoria:'VINO',    restricciones:{} },
-  { id:'vino_est8i',     nombre:'Estate 8 Impermeable',   categoria:'VINO',    restricciones:{} },
-  { id:'vino_est9',      nombre:'Estate 9',               categoria:'VINO',    restricciones:{} },
-  { id:'vino_kraft',     nombre:'Natural Kraft',          categoria:'VINO',    restricciones:{} },
-  { id:'vino_star',      nombre:'Star Constelation',      categoria:'VINO',    restricciones:{} },
-  { id:'vino_terra',     nombre:'Terra Skin',             categoria:'VINO',    restricciones:{} },
-  { id:'vino_vellum',    nombre:'Vellum',                 categoria:'VINO',    restricciones:{} },
-  { id:'vino_vellumi',   nombre:'Vellum Impermeable',     categoria:'VINO',    restricciones:{} },
-  // ── OTRO ──────────────────────────────────────────────────────────────────
-  { id:'otro',           nombre:'Otro / Especificar',     categoria:'ESPECIAL',restricciones:{} },
+  { id:'couche_hm',    nombre:'COUCHE HM',              categoria:'PAPEL',    restricciones:{} },
+  { id:'couche_acr',   nombre:'COUCHE ACR',             categoria:'PAPEL',    restricciones:{} },
+  { id:'couche_1096',  nombre:'COUCHE 1096',            categoria:'PAPEL',    restricciones:{} },
+  { id:'couche_pet',   nombre:'COUCHE/PET',             categoria:'PAPEL',    restricciones:{} },
+  { id:'papel_metal',  nombre:'Papel Metalizado',       categoria:'PAPEL',    restricciones:{} },
+  // ── BOPP ──────────────────────────────────────────────────────────────────
+  { id:'bopp_blanco',  nombre:'BOPP White',             categoria:'BOPP',     restricciones:{} },
+  { id:'bopp_clear',   nombre:'BOPP Clear',             categoria:'BOPP',     restricciones:{} },
+  { id:'bopp_metal',   nombre:'BOPP Metalizado',        categoria:'BOPP',     restricciones:{} },
+  { id:'bopp_cpet',    nombre:'BOPP Clear C/PET',       categoria:'BOPP',     restricciones:{} },
+  { id:'bopp_hotmelt', nombre:'BOPP White Hot Melt',    categoria:'BOPP',     restricciones:{} },
+  // ── PE ────────────────────────────────────────────────────────────────────
+  { id:'pe_blanco',    nombre:'PE White',               categoria:'PE',       restricciones:{} },
+  { id:'pe_clear',     nombre:'PE Clear',               categoria:'PE',       restricciones:{} },
+  { id:'pe_metal',     nombre:'PE Metalizado',          categoria:'PE',       restricciones:{} },
+  { id:'coex_bco',     nombre:'GLOBAL COEX BCO',        categoria:'PE',       restricciones:{} },
+  { id:'coex_clear',   nombre:'GLOBAL COEX CLEAR',      categoria:'PE',       restricciones:{} },
+  // ── VINO ──────────────────────────────────────────────────────────────────
+  { id:'bwf',          nombre:'BWF',                    categoria:'VINO',     restricciones:{} },
+  { id:'bwf_pet',      nombre:'BWF/PET',                categoria:'VINO',     restricciones:{} },
+  { id:'bwf_imp',      nombre:'BWF Impermeable',        categoria:'VINO',     restricciones:{} },
+  { id:'bwf_adh',      nombre:'BWF ADH ESP',            categoria:'VINO',     restricciones:{} },
+  { id:'est4',         nombre:'Estate 4',               categoria:'VINO',     restricciones:{} },
+  { id:'est4_pet',     nombre:'Estate 4 /PET',          categoria:'VINO',     restricciones:{} },
+  { id:'est4_imp',     nombre:'Estate 4 Impermeable',   categoria:'VINO',     restricciones:{} },
+  { id:'est8',         nombre:'Estate 8',               categoria:'VINO',     restricciones:{} },
+  { id:'est8_pet',     nombre:'Estate 8 /PET',          categoria:'VINO',     restricciones:{} },
+  { id:'est8_imp',     nombre:'Estate 8 Impermeable',   categoria:'VINO',     restricciones:{} },
+  { id:'est9',         nombre:'Estate 9',               categoria:'VINO',     restricciones:{} },
+  { id:'natural_kraft',nombre:'Natural Kraft',          categoria:'VINO',     restricciones:{} },
+  { id:'star',         nombre:'Star Constelation',      categoria:'VINO',     restricciones:{} },
+  { id:'terra',        nombre:'Terra Skin',             categoria:'VINO',     restricciones:{} },
+  { id:'vellum',       nombre:'Vellum',                 categoria:'VINO',     restricciones:{} },
+  { id:'classic',      nombre:'Classic Crest',          categoria:'VINO',     restricciones:{} },
+  { id:'allure',       nombre:'Allure Diamond',         categoria:'VINO',     restricciones:{} },
+  { id:'eggshell',     nombre:'Eggshell',               categoria:'VINO',     restricciones:{} },
+  { id:'agave',        nombre:'AGAVE',                  categoria:'VINO',     restricciones:{} },
+  // ── ESPECIAL ──────────────────────────────────────────────────────────────
+  { id:'dull_silver',  nombre:'Dull Silver',            categoria:'ESPECIAL', restricciones:{} },
+  { id:'holografico',  nombre:'Papel Holográfico',      categoria:'ESPECIAL', restricciones:{} },
+  { id:'arud',         nombre:'Arud Indestructible',    categoria:'ESPECIAL', restricciones:{} },
 ];
