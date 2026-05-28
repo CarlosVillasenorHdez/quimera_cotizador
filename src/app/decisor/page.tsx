@@ -3,7 +3,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   FileUp, CheckCircle, XCircle, AlertTriangle, ChevronDown, ChevronRight,
   Settings, Printer, BookOpen, RefreshCw, Lock,
-  Ruler, Package, Palette, Sparkles, ArrowRight, Info
+  Ruler, Package, Palette, Sparkles, ArrowRight, Info, Layers
 } from 'lucide-react';
 import { DatosEtiqueta, MATERIALES, MAQUINAS_ANALOG,
          UMBRALES, CILINDROS, PASO_DIENTE_MM } from '../../engine/knowledge';
@@ -15,6 +15,7 @@ const DEFAULT_ETIQUETA: DatosEtiqueta = {
   material_id: 'bopp_blanco', material_nombre: 'BOPP Blanco',
   tintas_proceso: 4,
   tiene_blanco: false, tiene_plata: false, tiene_invisible: false, tiene_barniz_uv: false,
+  tintas_offset: 0, tintas_flexo: 0, tintas_screen: 0,
   tiene_hot_stamping: false, tiene_cold_foil: false, tiene_embossing: false,
   tiene_screen: false, tiene_cupon: false,
   cantidades: [1000, 5000, 10000, 50000],
@@ -161,7 +162,12 @@ function Diagrama({ eje_mm, des_mm, cav_eje, cav_des, gap_eje_mm, gap_des_mm, an
     <div>
       <div className="flex justify-between items-center mb-2 text-xs text-slate-500">
         <span className="font-semibold text-slate-400">{nombre}</span>
-        <span className="font-mono">{cav_eje}×{cav_des} = <strong className="text-slate-200">{cav_eje*cav_des}</strong> etiq/frame · papel {pw_r.toFixed(0)}×{ph_r.toFixed(0)} mm</span>
+        <span className="font-mono">
+          {cav_eje}×{cav_des} = <strong className="text-slate-200">{cav_eje*cav_des}</strong> etiq/frame
+          {' · '}papel {pw_r.toFixed(0)}×{ph_r.toFixed(0)} mm
+          {' · '}gap eje <strong className="text-amber-300">{gap_eje_mm}mm</strong>
+          {' · '}gap des <strong className="text-amber-300">{gap_des_mm.toFixed(2)}mm</strong>
+        </span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-xl border border-slate-700/40 bg-slate-900/80">
         <rect x={ox} y={oy} width={pw} height={ph} fill={tipo==='digital'?'#1a2540':'#0f2027'} stroke="#334155" strokeWidth={1} rx={3}/>
@@ -238,7 +244,7 @@ function MachCard({ r }: { r: ResultadoMaquina }) {
         <Chip color="gray" size="xs">{r.tipo}</Chip>
       </div>
       <div className="space-y-1">
-        {r.rechazos.filter(x=>x.critico).map(x=>(
+        {r.razones_no_viable.map(x=>(
           <div key={x.codigo} className="flex items-start gap-1.5 text-xs text-red-400/80">
             <span className="shrink-0">✗</span><span>{x.descripcion}</span>
           </div>
@@ -268,7 +274,7 @@ function MachCard({ r }: { r: ResultadoMaquina }) {
       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs mb-2">
         {r.cav_eje!=null&&<><span className="text-slate-500">Cav. eje×des</span><span className="text-slate-300 font-mono text-right">{r.cav_eje}×{r.cav_des}</span></>}
         {r.metros_1k!=null&&<><span className="text-slate-500">Metros/millar</span><span className="text-slate-300 font-mono text-right">{r.metros_1k} m</span></>}
-        {r.cilindro_dientes!=null&&<><span className="text-slate-500">Cilindro</span><span className="text-slate-300 font-mono text-right">d{r.cilindro_dientes} · {r.cilindro_gap_mm?.toFixed(2)}mm</span></>}
+        {r.cilindro_dientes!=null&&<><span className="text-slate-500">Cilindro</span><span className="text-slate-300 font-mono text-right">d{r.cilindro_dientes} · {r.gap_des_mm?.toFixed(2)}mm</span></>}
       </div>
       {r.advertencias.length>0&&(
         <div className="space-y-1 pt-2 border-t border-slate-700/30">
@@ -287,10 +293,7 @@ function MachCard({ r }: { r: ResultadoMaquina }) {
 
 function ResultadoPanel({ resultado, etiqueta }: { resultado: ResultadoAnalisis; etiqueta: DatosEtiqueta }) {
   const allViable = [...resultado.viable_digital, ...resultado.viable_analog];
-  const noViable  = resultado.no_viable.filter(r => {
-    const codes = r.rechazos.map(x=>x.codigo);
-    return codes.includes('SIN_CILINDRO') || (r.tipo==='digital' && codes.some(c=>['EJE_FUERA','DES_FUERA','SIN_PLATA'].includes(c)));
-  });
+  const noViable  = resultado.no_viable
   const bestDig = resultado.viable_digital[0];
   const bestAna = resultado.viable_analog[0];
 
@@ -363,7 +366,7 @@ function ResultadoPanel({ resultado, etiqueta }: { resultado: ResultadoAnalisis;
             {bestAna?.cav_eje&&(
               <Diagrama eje_mm={etiqueta.eje_mm} des_mm={etiqueta.des_mm}
                 cav_eje={bestAna.cav_eje!} cav_des={bestAna.cav_des!}
-                gap_eje_mm={3} gap_des_mm={bestAna.cilindro_gap_mm??3}
+                gap_eje_mm={3} gap_des_mm={bestAna.gap_des_mm??3}
                 ancho_mm={etiqueta.eje_mm*bestAna.cav_eje!+3*(bestAna.cav_eje!+1)}
                 tipo="analog" nombre={bestAna.nombre}/>
             )}
@@ -429,7 +432,7 @@ function Formulario({ initial, onAnalizar }: { initial: DatosEtiqueta; onAnaliza
           })}
         </select>
       </Sec>
-      <Sec label="Tintas" icon={Palette}>
+      <Sec label="Tintas digitales" icon={Palette}>
         <div className="space-y-3">
           {ni('Tintas de proceso (CMYK + especiales)','tintas_proceso')}
           <div className="divide-y divide-slate-800">
@@ -438,6 +441,14 @@ function Formulario({ initial, onAnalizar }: { initial: DatosEtiqueta; onAnaliza
             {tr('Tinta invisible (UV)','tiene_invisible')}
             {tr('Barniz UV','tiene_barniz_uv')}
           </div>
+        </div>
+      </Sec>
+      <Sec label="Tintas analógicas" icon={Layers}>
+        <div className="space-y-2 text-xs text-slate-500 mb-2">Si el trabajo lleva offset/flexo/screen, ingrésalos aquí.</div>
+        <div className="grid grid-cols-3 gap-2">
+          {ni('Offset','tintas_offset')}
+          {ni('Flexo','tintas_flexo')}
+          {ni('Screen','tintas_screen')}
         </div>
       </Sec>
       <Sec label="Acabados especiales" icon={Sparkles}>

@@ -334,18 +334,23 @@ export interface DatosEtiqueta {
   material_id: string;
   material_nombre: string;
 
-  // Tintas
-  tintas_proceso: number;     // CMYK = 4, etc.
+  // Tintas digitales
+  tintas_proceso: number;     // CMYK + especiales digitales
   tiene_blanco: boolean;
   tiene_plata: boolean;
   tiene_invisible: boolean;
   tiene_barniz_uv: boolean;
 
+  // Tintas analógicas (separadas)
+  tintas_offset: number;      // cabezas offset requeridas
+  tintas_flexo: number;       // cabezas flexo requeridas
+  tintas_screen: number;      // cabezas screen requeridas
+
   // Acabados especiales
   tiene_hot_stamping: boolean;
   tiene_cold_foil: boolean;
   tiene_embossing: boolean;
-  tiene_screen: boolean;
+  tiene_screen: boolean;      // serigrafía (redundante con tintas_screen > 0, pero útil para UI)
   tiene_cupon: boolean;
 
   // Cantidades del RFQ
