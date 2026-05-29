@@ -155,18 +155,30 @@ function Diagrama({ eje_mm, des_mm, cav_eje, cav_des, gap_eje_mm, gap_des_mm, an
   gap_eje_mm: number; gap_des_mm: number; ancho_mm: number;
   tipo: 'digital'|'analog'; nombre: string;
 }) {
-  const W = 760, H = 360, PAD = 52;
-  const pw_r = tipo === 'digital' ? ancho_mm : (eje_mm * cav_eje + gap_eje_mm * (cav_eje + 1));
-  const ph_r = (des_mm + gap_des_mm) * cav_des + gap_des_mm;
-  const sc   = Math.min((W - PAD*2) / pw_r, (H - PAD*2) / ph_r);
-  const pw = pw_r*sc, ph = ph_r*sc;
-  const ox = (W-pw)/2, oy = (H-ph)/2;
+  // Muestra solo una MUESTRA del layout (máx 4 cols × 4 filas) a escala ampliada.
+  // Esto garantiza que los gaps sean siempre visibles sin importar el tamaño de la etiqueta.
+  const SHOW_C = Math.min(cav_eje, 4);
+  const SHOW_R = Math.min(cav_des, 4);
+  const W = 760, H = 340, PAD = 52;
+
+  // Área de muestra real en mm
+  const sample_w = eje_mm * SHOW_C + gap_eje_mm * (SHOW_C + 1);
+  const sample_h = des_mm * SHOW_R + gap_des_mm * (SHOW_R + 1);
+  const sc = Math.min((W - PAD*2) / sample_w, (H - PAD*2) / sample_h);
+  const pw = sample_w * sc, ph = sample_h * sc;
+  const ox = (W - pw) / 2, oy = (H - ph) / 2;
   const ew = eje_mm*sc, eh = des_mm*sc, ge = gap_eje_mm*sc, gd = gap_des_mm*sc;
   const col     = tipo === 'digital' ? '#3B82F6' : '#14B8A6';
   const paperBg = tipo === 'digital' ? '#0d1628'  : '#0a1e1b';
 
+  // Datos reales del frame completo (para el footer)
+  const pw_real = tipo === 'digital' ? ancho_mm : (eje_mm * cav_eje + gap_eje_mm * (cav_eje + 1));
+  const ph_real = des_mm * cav_des + gap_des_mm * (cav_des + 1);
+
+  const isSample = SHOW_C < cav_eje || SHOW_R < cav_des;
+
   const rects: {x:number;y:number}[] = [];
-  for (let r=0; r<cav_des; r++) for (let c=0; c<cav_eje; c++)
+  for (let r=0; r<SHOW_R; r++) for (let c=0; c<SHOW_C; c++)
     rects.push({ x: ox+ge+c*(ew+ge), y: oy+gd+r*(eh+gd) });
 
   return (
@@ -177,6 +189,11 @@ function Diagrama({ eje_mm, des_mm, cav_eje, cav_des, gap_eje_mm, gap_des_mm, an
           <div className="w-2.5 h-2.5 rounded-full" style={{background: col}}/>
           <span className="text-sm font-black text-slate-100">{nombre}</span>
           <Chip color={tipo==='digital'?'blue':'teal'} size="xs">{tipo}</Chip>
+          {isSample && (
+            <span className="text-[10px] text-slate-600 italic">
+              (muestra {SHOW_C}×{SHOW_R} de {cav_eje}×{cav_des})
+            </span>
+          )}
         </div>
         <span className="text-sm font-mono text-slate-400">
           <span className="text-slate-200 font-bold">{cav_eje}×{cav_des}</span>
@@ -187,61 +204,100 @@ function Diagrama({ eje_mm, des_mm, cav_eje, cav_des, gap_eje_mm, gap_des_mm, an
 
       {/* SVG */}
       <svg viewBox={`0 0 ${W} ${H}`} style={{display:'block',width:'100%'}}>
-        {/* Paper */}
+        {/* Sample paper area */}
         <rect x={ox} y={oy} width={pw} height={ph} fill={paperBg} stroke="#334155" strokeWidth={1.5} rx={4}/>
-        {/* Width arrow */}
+
+        {/* Width annotation */}
         <line x1={ox} y1={oy-22} x2={ox+pw} y2={oy-22} stroke="#475569" strokeWidth={1}/>
         <line x1={ox}    y1={oy-28} x2={ox}    y2={oy-16} stroke="#475569" strokeWidth={1}/>
         <line x1={ox+pw} y1={oy-28} x2={ox+pw} y2={oy-16} stroke="#475569" strokeWidth={1}/>
         <text x={(ox+ox+pw)/2} y={oy-26} fill="#64748b" fontSize={11} textAnchor="middle" fontWeight="600">
-          {pw_r.toFixed(0)} mm {tipo==='digital'?'(planilla)':'(bobina)'}
+          {SHOW_C} × {eje_mm} mm {isSample ? `(muestra de ${cav_eje} col)` : '(ancho completo)'}
         </text>
-        {/* Height arrow */}
+
+        {/* Height annotation */}
         <line x1={ox+pw+20} y1={oy} x2={ox+pw+20} y2={oy+ph} stroke="#475569" strokeWidth={1}/>
         <line x1={ox+pw+14} y1={oy}    x2={ox+pw+26} y2={oy}    stroke="#475569" strokeWidth={1}/>
         <line x1={ox+pw+14} y1={oy+ph} x2={ox+pw+26} y2={oy+ph} stroke="#475569" strokeWidth={1}/>
         <text x={ox+pw+36} y={(oy+oy+ph)/2} fill="#64748b" fontSize={11} textAnchor="middle" dominantBaseline="middle"
           transform={`rotate(90,${ox+pw+36},${(oy+oy+ph)/2})`}>
-          {ph_r.toFixed(0)} mm
+          {SHOW_R} × {des_mm} mm {isSample ? `(de ${cav_des} fil)` : ''}
         </text>
+
         {/* Labels */}
         {rects.map(({x,y},i) => (
           <g key={i}>
             <rect x={x} y={y} width={ew} height={eh} fill={col+'22'} stroke={col} strokeWidth={1.5} rx={3}/>
-            {ew > 28 && eh > 16 && (
-              <text x={x+ew/2} y={y+eh/2} fill={col} fontSize={Math.min(12, ew/4, eh/2.5)}
-                textAnchor="middle" dominantBaseline="middle" fontWeight="700" opacity={0.85}>
+            {ew > 24 && eh > 14 && (
+              <text x={x+ew/2} y={y+eh/2} fill={col} fontSize={Math.min(11, ew/4.5, eh/2.5)}
+                textAnchor="middle" dominantBaseline="middle" fontWeight="700" opacity={0.8}>
                 {eje_mm}×{des_mm}
               </text>
             )}
           </g>
         ))}
-        {/* Gap eje */}
-        {cav_eje > 1 && rects.length >= 2 && ge > 6 && (
+
+        {/* Gap eje — always render with minimum visual size */}
+        {SHOW_C > 1 && rects.length >= 2 && (
           <g>
+            {ge >= 4 ? (
+              <rect x={rects[0].x+ew} y={oy+gd} width={ge} height={ph-gd*2} fill="#F59E0B22" stroke="#F59E0B44" strokeWidth={0}/>
+            ) : (
+              <line x1={rects[0].x+ew+ge/2} y1={oy+gd} x2={rects[0].x+ew+ge/2} y2={oy+ph-gd} stroke="#F59E0B" strokeWidth={2} opacity={0.7}/>
+            )}
             <line x1={rects[0].x+ew} y1={oy+gd/2} x2={rects[1].x} y2={oy+gd/2}
               stroke="#F59E0B" strokeWidth={1.5} strokeDasharray="3,2" opacity={0.9}/>
             <text x={(rects[0].x+ew+rects[1].x)/2} y={oy+gd/2-8}
-              fill="#F59E0B" fontSize={10} textAnchor="middle" fontWeight="700">{gap_eje_mm}mm</text>
+              fill="#F59E0B" fontSize={10} textAnchor="middle" fontWeight="800">{gap_eje_mm}mm</text>
           </g>
         )}
-        {/* Gap des */}
-        {cav_des > 1 && rects.length > cav_eje && gd > 6 && (
+
+        {/* Gap des — always render */}
+        {SHOW_R > 1 && rects.length > SHOW_C && (
           <g>
-            <line x1={ox+ge/2} y1={rects[0].y+eh} x2={ox+ge/2} y2={rects[cav_eje].y}
+            {gd >= 4 ? (
+              <rect x={ox+ge} y={rects[0].y+eh} width={ew} height={gd} fill="#F59E0B22" stroke="#F59E0B44" strokeWidth={0}/>
+            ) : (
+              <line x1={ox+ge} y1={rects[0].y+eh+gd/2} x2={ox+ge+ew} y2={rects[0].y+eh+gd/2} stroke="#F59E0B" strokeWidth={2} opacity={0.7}/>
+            )}
+            <line x1={ox+ge/2} y1={rects[0].y+eh} x2={ox+ge/2} y2={rects[SHOW_C].y}
               stroke="#F59E0B" strokeWidth={1.5} strokeDasharray="3,2" opacity={0.9}/>
-            <text x={ox+ge/2+3} y={(rects[0].y+eh+rects[cav_eje].y)/2}
-              fill="#F59E0B" fontSize={10} dominantBaseline="middle" fontWeight="700">{gap_des_mm.toFixed(2)}mm</text>
+            <text x={ox+ge/2+3} y={(rects[0].y+eh+rects[SHOW_C].y)/2}
+              fill="#F59E0B" fontSize={10} dominantBaseline="middle" fontWeight="800">{gap_des_mm.toFixed(2)}mm</text>
           </g>
+        )}
+
+        {/* "Continua..." indicator if sample */}
+        {isSample && SHOW_C < cav_eje && (
+          <text x={ox+pw+14} y={oy+ph/2} fill="#475569" fontSize={18} dominantBaseline="middle" fontWeight="900">…</text>
+        )}
+        {isSample && SHOW_R < cav_des && (
+          <text x={ox+pw/2} y={oy+ph+14} fill="#475569" fontSize={18} textAnchor="middle" fontWeight="900">…</text>
         )}
       </svg>
 
-      {/* Footer — suaje reference */}
-      <div className="px-5 py-3 border-t border-slate-800 grid grid-cols-4 gap-4 text-xs">
-        <div><div className="text-slate-600 mb-0.5">Ancho papel</div><div className="font-mono font-bold text-slate-200">{pw_r.toFixed(0)} mm</div></div>
-        <div><div className="text-slate-600 mb-0.5">Alto papel</div><div className="font-mono font-bold text-slate-200">{ph_r.toFixed(0)} mm</div></div>
-        <div><div className="text-slate-600 mb-0.5">Gap eje (suaje)</div><div className="font-mono font-bold text-amber-300">{gap_eje_mm} mm</div></div>
-        <div><div className="text-slate-600 mb-0.5">Gap des (suaje)</div><div className="font-mono font-bold text-amber-300">{gap_des_mm.toFixed(2)} mm</div></div>
+      {/* Footer */}
+      <div className="px-5 py-3 border-t border-slate-800 grid grid-cols-5 gap-4 text-xs">
+        <div>
+          <div className="text-slate-600 mb-0.5">Planilla / bobina</div>
+          <div className="font-mono font-bold text-slate-200">{pw_real.toFixed(0)} mm</div>
+        </div>
+        <div>
+          <div className="text-slate-600 mb-0.5">Alto frame</div>
+          <div className="font-mono font-bold text-slate-200">{ph_real.toFixed(0)} mm</div>
+        </div>
+        <div>
+          <div className="text-slate-600 mb-0.5">Cavidades</div>
+          <div className="font-mono font-bold text-slate-200">{cav_eje}×{cav_des} = {cav_eje*cav_des}</div>
+        </div>
+        <div>
+          <div className="text-slate-600 mb-0.5">Gap eje (suaje)</div>
+          <div className="font-mono font-bold text-amber-300">{gap_eje_mm} mm</div>
+        </div>
+        <div>
+          <div className="text-slate-600 mb-0.5">Gap des (suaje)</div>
+          <div className="font-mono font-bold text-amber-300">{gap_des_mm.toFixed(2)} mm</div>
+        </div>
       </div>
     </div>
   );
