@@ -903,16 +903,31 @@ export default function PensadorPage() {
                     onDragLeave={() => setDrag(false)}
                     onDrop={e => { e.preventDefault(); setDrag(false); cargarRFQ(e.dataTransfer.files[0]); }}
                     onClick={() => fileRef.current?.click()}
-                    className={`rounded-2xl border-2 border-dashed p-10 text-center cursor-pointer transition-all ${
+                    className={`rounded-2xl border-2 border-dashed p-8 text-center cursor-pointer transition-all ${
                       drag ? 'border-orange-500 bg-orange-950/20' : 'border-slate-800 hover:border-slate-700 bg-slate-900/20'}`}>
-                    <FileUp size={32} className={`mx-auto mb-3 ${drag ? 'text-orange-400' : 'text-slate-700'}`}/>
-                    <p className="text-base font-bold text-slate-400 mb-1">Arrastra el RFQ de CERM aquí</p>
-                    <p className="text-xs text-slate-700">formato .html — dimensiones y cantidades se extraen automáticamente</p>
+                    <FileUp size={28} className={`mx-auto mb-2 ${drag ? 'text-orange-400' : 'text-slate-700'}`}/>
+                    <p className="text-sm font-bold text-slate-400 mb-1">Arrastra el RFQ de CERM aquí</p>
+                    <p className="text-xs text-slate-700 mb-3">formato .html — dimensiones, tintas, material y acabados se extraen automáticamente</p>
+                    <div className="flex flex-wrap justify-center gap-1.5 text-[10px]">
+                      {([
+                        'Dimensiones','Cantidades','Tintas digitales',
+                        'Tintas analógicas','Material','Acabados'
+                      ]).map(f => (
+                        <span key={f} className="px-2 py-0.5 rounded-full border border-slate-700 text-slate-600">{f}</span>
+                      ))}
+                    </div>
                     <input ref={fileRef} type="file" accept=".html" className="hidden" onChange={e => cargarRFQ(e.target.files?.[0])}/>
                   </div>
                   {error && (
-                    <div className="flex items-center gap-2 p-3 bg-red-950/30 border border-red-800/40 rounded-xl text-sm text-red-400">
-                      <AlertTriangle size={14} className="shrink-0"/>{error}
+                    <div className="rounded-xl border border-red-800/40 p-4 bg-red-950/20">
+                      <div className="flex items-center gap-2 text-sm text-red-400 mb-1">
+                        <AlertTriangle size={14} className="shrink-0"/>
+                        <strong>No se pudo leer el archivo</strong>
+                      </div>
+                      <p className="text-xs text-red-400/70 ml-5">{error}</p>
+                      <p className="text-xs text-slate-600 ml-5 mt-1">
+                        Asegúrate de subir el HTML generado por CERM (calculadora de metros o selector de tintas/material).
+                      </p>
                     </div>
                   )}
                   <div className="rounded-2xl border border-slate-800 overflow-hidden" style={{background: CARD2}}>
